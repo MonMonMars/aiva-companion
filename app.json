@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "AIVA",
+    "slug": "aiva-companion",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFD9E8"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.aiva.companion",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "暂不使用麦克风",
+        "NSCameraUsageDescription": "暂不使用摄像头"
+      }
+    },
+    "android": {
+      "package": "com.aiva.companion",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": []
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "REPLACE_WITH_YOUR_EAS_PROJECT_ID"
+      }
+    }
+  }
+}
