@@ -208,3 +208,68 @@ export const PROVIDERS = [
 ];
 
 export const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+// ---------------------------------------------------------------------------
+// 每个角色的「嗓音」
+// ---------------------------------------------------------------------------
+// 注意：PERSONAS 里已经有一个 `voice` 键了，那是「被摸头/被戳时说的台词」。
+// 这里是 TTS 音色，叫 `speech`，两者不要混。
+//
+// personInstruction 是喂给 OpenAI gpt-4o-mini-tts 的自然语言描述，
+// 直接影响"听起来是什么性格的人"。Azure 用 voice/locale/style/disallowStyle。
+// ElevenLabs 用 elevenVoice + 情绪参数。
+//
+// disallowStyle=true 是因为：多语言语音（Multilingual）才支持情绪风格，
+// 粤语专属发音人基本不支持 express-as，硬开会返回 400。
+export const SPEECH = {
+  girlfriend: {
+    label: '软甜少女音',
+    openai: { voice: 'nova', speed: 1.05, personInstruction: 'Speak as a warm, playful young woman. Bright, affectionate, slightly breathy, with a natural melodic lilt.' },
+    azure: { voice: 'zh-CN-XiaoyiMultilingualNeural', locale: 'zh-CN', allowStyle: true },
+    azureCantonese: { voice: 'zh-HK-HiuGaaiNeural', locale: 'zh-HK', allowStyle: false },
+    azureEnglish: { voice: 'en-US-AvaMultilingualNeural', locale: 'en-US', allowStyle: true },
+    eleven: { voice: 'EXAVITQu4vr4xnSDxMaL', stability: 0.35, style: 0.55 },
+  },
+  boyfriend: {
+    label: '低沉少年音',
+    openai: { voice: 'echo', speed: 0.95, personInstruction: 'Speak as a calm, understated young man. Low, relaxed, not very talkative, but warm underneath.' },
+    azure: { voice: 'zh-CN-YunxiMultilingualNeural', locale: 'zh-CN', allowStyle: true },
+    azureCantonese: { voice: 'zh-HK-WanLungNeural', locale: 'zh-HK', allowStyle: false },
+    azureEnglish: { voice: 'en-US-AndrewMultilingualNeural', locale: 'en-US', allowStyle: true },
+    eleven: { voice: 'ErXwobaYiN019PkySvjV', stability: 0.55, style: 0.3 },
+  },
+  secretary: {
+    label: '清冷专业音',
+    openai: { voice: 'sage', speed: 1.0, personInstruction: 'Speak as a composed, professional personal secretary. Crisp, clear, articulate, poised, with subtle warmth reserved for private moments.' },
+    azure: { voice: 'zh-CN-XiaoxiaoMultilingualNeural', locale: 'zh-CN', allowStyle: true },
+    azureCantonese: { voice: 'zh-HK-HiuMaanNeural', locale: 'zh-HK', allowStyle: false },
+    azureEnglish: { voice: 'en-US-JennyMultilingualNeural', locale: 'en-US', allowStyle: true },
+    eleven: { voice: '21m00Tcm4TlvDq8ikWAM', stability: 0.65, style: 0.25 },
+  },
+};
+
+/**
+ * 按「选用的服务商 + 说的语言」算出这一句到底用哪个声音。
+ * 之所以要动态换音色：粤语必须用粤语专属发音人。
+ * 拿一个普通话声音去念粤语台词会非常塑料，这是最容易被吐槽的地方。
+ */
+export function resolveVoice(personaId, provider, lang) {
+  const s = SPEECH[personaId] || SPEECH.girlfriend;
+  if (provider === 'openai') {
+    return { voice: s.openai.voice, speed: s.openai.speed, personInstruction: s.openai.personInstruction };
+  }
+  if (provider === 'azure') {
+    const useCantonese = lang === 'zh-HK';
+    const useEnglish = lang === 'en-US' && !useCantonese;
+    const target = useCantonese
+      ? (s.azureCantonese || s.azure)
+      : useEnglish
+        ? (s.azureEnglish || s.azure)
+        : s.azure;
+    return { voice: target.voice, locale: target.locale, allowStyle: target.allowStyle, speed: s.openai.speed };
+  }
+  if (provider === 'elevenlabs') {
+    return { voice: s.eleven.voice, speed: s.openai.speed, extra: s.eleven };
+  }
+  return { voice: s.openai.voice, speed: s.openai.speed };
+}

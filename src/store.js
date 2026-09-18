@@ -39,10 +39,34 @@ const DEFAULT_STATE = {
   lastCheckInDay: null,
   lastSeenAt: null,
   config: {
+    // ---- 大模型 ----
     provider: 'deepseek',
     baseUrl: 'https://api.deepseek.com/v1',
     model: 'deepseek-chat',
     apiKey: '',
+
+    // ---- 说话 / 听觉 / 联网 ----
+    spokenLang: 'auto',   // auto | zh-CN | zh-HK | en-US | mix
+    kidMode: false,       // 儿童模式：内容过滤更严、句子更短
+    voice: {
+      ttsProvider: 'openai',     // openai | azure | elevenlabs
+      ttsVoice: '',              // 空 = 用该角色在 theme.SPEECH 里的默认音色
+      ttsSpeed: null,            // null = 用默认语速
+      ttsModel: 'gpt-4o-mini-tts',
+      sttProvider: 'openai',     // openai | groq | azure
+      sttLanguage: 'auto',       // auto | zh | yue | en
+      searchProvider: 'none',    // none | tavily | brave | serper
+      defaultCity: '',           // 问"天气怎么样"时的默认城市
+      // Key 全部只存在本机，任何情况下都不进代码、不进 git、不上传
+      openaiKey: '',
+      groqKey: '',
+      azureKey: '',
+      azureRegion: '',
+      elevenKey: '',
+      tavilyKey: '',
+      braveKey: '',
+      serperKey: '',
+    },
   },
 };
 
@@ -99,6 +123,9 @@ function buildSnapshot() {
     config: state.config,
     lastCheckInDay: state.lastCheckInDay,
     hasHistory: (state.chatHistory[id] || []).length > 0,
+    // 语音链路要拿最近几轮做上下文。这里给的是原始数组引用，
+    // 只在 appendMessage 时才会换新引用，所以不会破坏快照的引用稳定性。
+    history: state.chatHistory[id] || [],
   };
 }
 
@@ -121,7 +148,16 @@ export async function loadStore() {
         ...DEFAULT_STATE,
         ...saved,
         relations: { ...DEFAULT_STATE.relations, ...(saved.relations || {}) },
-        config: { ...DEFAULT_STATE.config, ...(saved.config || {}) },
+        // config 必须深层合并 voice：浅合并会用旧存档里的 voice 整体覆盖掉默认值，
+        // 以后往 voice 里加新字段时，老用户的存档会直接把它抹成 undefined。
+        config: {
+          ...DEFAULT_STATE.config,
+          ...(saved.config || {}),
+          voice: {
+            ...DEFAULT_STATE.config.voice,
+            ...(saved.config?.voice || {}),
+          },
+        },
       };
       const comeback = applyTimeDecay();
       snapCache = null;

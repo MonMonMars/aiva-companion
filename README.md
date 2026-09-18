@@ -44,6 +44,112 @@ npx expo start
 > ⚠️ **Key 的安全**：Key 存在手机本地的 AsyncStorage，**不会**上传任何服务器，也不在代码里。
 > 但它同时也是明文存在设备上的 —— 如果这是公司的 Key，建议只用自己的额度，别用生产 Key。
 
+### 2.1 语音合成服务商（TTS）怎么选
+
+路径：**主界面 ⚙️ → 说话与联网 → 说话 · 联网设置**。三家都接了，随时可切。
+
+| 服务商 | 适用情况 | 备注 |
+|---|---|---|
+| **OpenAI** | 综合最自然，推荐日常聊天 | `gpt-4o-mini-tts` 支持用自然语言描述语气；延迟低；粤语可用 `alloy`/`nova` 等音色近似发音 |
+| **Azure** | 中文 / 粤语效果最好 | 有专门的**粤语音色** `zh-HK-WanLungNeural`（男，成熟自然）、`HiuGaaiNeural`（女，温柔亲切）、`HiuMaanNeural`（女，活泼年轻）；**注意**：粤语音色不支持 `<mstts:express-as>` 情绪样式，代码里已自动跳过 |
+| **ElevenLabs** | 英语场景最好听 | 通过 `stability / style / similarity_boost` 三个参数调情绪强度 |
+
+OpenAI 的音色列表：`alloy / ash / ballad / coral / echo / fable / nova / onyx / sage / shimmer`。
+
+### 2.2 语音识别（STT）与方言
+
+| 服务商 | 备注 |
+|---|---|
+| OpenAI Whisper | 通用，多语言识别稳 |
+| Groq Whisper-large-v3 | 目前最快的选项，适合实时对话 |
+| Azure | 粤语识别最准（指定 `zh-HK` 区域） |
+
+粤语检测是自写的打分逻辑（`src/voice/stt.js`）：统计句子里「冇、嘅、喺、咗、啲、乜、咁、佢、俾」这类粤语特有字的占比来判定，不依赖 LLM。
+
+### 2.3 推荐的大模型
+
+- **中文场景**：`DeepSeek` 或 `Moonshot / Kimi`（成本低、延迟低）
+- **需要粤语创造力**：`Moonshot` 或 `qwen-plus`（粤语产出的口语感更自然，不容易写成书面语）
+- **需要情绪**：建议用支持 function calling 的模型，否则联网 / 提醒等能力会退化（见 2.5）
+
+> 💡 **粤语能力**：粤语效果主要看 LLM 的粤语产出能力，TTS 只是把字念出来。
+> 想让角色粤语说得好，**选对大模型比选对音色更重要**。
+
+### 2.4 说话语言
+
+支持四种，可在设置里选：
+
+| 选项 | 行为 |
+|---|---|
+| **auto**（推荐） | 自动识别你说的是粤语、普通话还是英语，然后用同一种语言回答 |
+| 粤语 zh-HK | 角色固定用粤语口语回答 |
+| 普通话 zh-CN | 角色固定用普通话回答 |
+| 英语 en-US | 角色固定用英语回答 |
+
+还有 **mix** 模式：中英夹杂自然地切换，适合香港 / 海外用户的日常说话习惯。
+
+### 2.5 联网搜索、天气与换算
+
+**联网搜索**（三家可选，`none` 表示关闭）：
+
+| 服务商 | 备注 |
+|---|---|
+| Tavily | **推荐**，专为 AI Agent 设计，直接返回答案摘要和来源，而非一堆链接再让 LLM 自己读 |
+| Brave | 有免费额度，即时性强 |
+| Serper | Google 搜索结果，适合查本地生活信息 |
+
+**天气**：走 **Open-Meteo**，完全免费、**不需要 Key**。问「明天需要带伞吗」会自动地理编码城市并给出预报。
+
+**单位换算、运算、音频转写**：OpenAI 兼容接口的通用能力，凡是支持 function calling 的模型都能主动调用；模型不支持时会退化到关键词触发（`src/services/tools.js`）。
+
+### 2.6 麦克风、打断与韵律
+
+ChatGPT 式的交互已经打通：
+
+- 🎙️ **麦克风**：按住麦克风说话（Whisper 转文字），或者直接打字。打字也一样会念出来，走的是同一套韵律系统。
+- 🛑 **打断**：播放过程中监测麦克风音量，超过阈值 **-25dB 且持续 320ms** 就判定为你想插话，立刻停止播放并切回录音。
+- 😂 **带笑声的语音**：LLM 输出的文字里会插入情绪标记（`[laughs]`、`[sighs]`、`[giggles]` 等），系统按标记把一句话拆成多段，每段用不同的情绪参数分别合成，再拼起来播放。所以会有真正的笑声、叹气、耳语。
+
+可用的情绪标记：`[laughs] [giggles] [sighs] [excited] [comfort] [gentle] [sad] [shy] [whispers] [surprised] [curious] [serious] [sing] [teach] [proud] [sleepy]`
+
+### 2.7 儿童模式（AD）
+
+打开设置里的**儿童模式**后会启用一套独立的提示词：
+
+1. 用看得见的比喻讲科学，不用抽象概念（讲"地球为什么转"，用「旋转木马」而不是「向心力」）
+2. 句子更短，一次只说一件事
+3. 孩子说错不否定，先肯定他在思考，再轻轻补正
+4. 遇到科学话题自动切到 `[teach]` 那种耐心语气
+
+### 2.8 每个角色的音色映射
+
+三个角色各自配了一套音色，定义在 `src/theme.js` 的 `SPEECH`：
+
+| 角色 | 风格 | OpenAI | Azure 普通话 | Azure 粤语 | Azure 英语 | ElevenLabs |
+|---|---|---|---|---|---|---|
+| **小柔**（女朋友） | 软甜少女音 | `nova` 1.05× | `zh-CN-XiaoyiMultilingualNeural` | `zh-HK-HiuGaaiNeural` | `en-US-AvaMultilingualNeural` | `EXAVITQu4vr4xnSDxMaL` |
+| **阿哲**（男朋友） | 低沉少年音 | `echo` 0.95× | `zh-CN-YunxiMultilingualNeural` | `zh-HK-WanLungNeural` | `en-US-AndrewMultilingualNeural` | `ErXwobaYiN019PkySvjV` |
+| **林秘书**（秘书） | 清冷专业音 | `sage` 1.0× | `zh-CN-XiaoxiaoMultilingualNeural` | `zh-HK-HiuMaanNeural` | `en-US-JennyMultilingualNeural` | `21m00Tcm4TlvDq8ikWAM` |
+
+> ⚠️ **粤语音色的坑**：Azure 的粤语音色（HiuGaai / WanLung / HiuMaan）**不支持** `<mstts:express-as>` 情绪样式，
+> 硬塞会报错。代码里已经标记为 `allowStyle: false` 自动跳过，只用语速和语调表达情绪。
+> 这是目前在 Azure 上做粤语情感语音的一个真实限制 —— 想要粤语 + 强情绪，建议 TTS 选 OpenAI。
+
+> 想换就把 `src/theme.js` 的 `SPEECH[personaId]` 改成你喜欢的音色即可。Azure 完整音色列表见[官方文档](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support)。
+
+### 2.9 iPhone 提醒事项
+
+**需要说清楚的限制**：Apple **没有提供**往系统「提醒事项」App 里写东西的 API —— 不是我们不想做，是 iOS 不给这个口子。
+
+所以替代方案是**本地通知**：App 会申请通知权限（第一次打开语音功能时申请），然后像闹钟一样在指定时间推送提醒，效果和提醒事项基本一致。
+
+角色会自动调用：说「十分钟后提醒我吃药」，她就设一个 10 分钟后的本地通知。
+
+### 2.10 记忆
+
+角色LLM 可以主动调用 `remember_fact` 工具记住关于你的事：名字、喜好、家人、重要日期。
+记下来的内容会持久存在本机，并且在每次对话时作为 system prompt 的一部分注入（见 `src/llm.js` 的 `buildSystemPrompt`），所以她是真的"记得你"，而不是每轮重新认识。
+
 ---
 
 ## 三、玩起来大致是这样
@@ -122,22 +228,42 @@ llm-companion/
 ├── app.json                   App 配置（名字 / 图标 / 包名）
 ├── index.js                   入口
 ├── assets/                    图标与启动图
-└── src/
-    ├── theme.js               人格设定、配色、3D 形象参数、等级与礼物表
-    ├── store.js               养成状态 + AsyncStorage 持久化 + 时间衰减
-    ├── llm.js                 大模型调用 + 离线兜底引擎 + 记忆抽取
-    ├── useStore.js            React 侧的 store 订阅
-    ├── three/
-    │   └── companion.js       3D 角色几何构建 + 动画 + 粒子（平台无关）
-    ├── components/
-    │   ├── Avatar3D.web.js    web 渲染（canvas + three）
-    │   ├── Avatar3D.native.js 原生渲染（expo-gl + three）
-    │   └── ui.js              玻璃卡 / 进度条 / 按钮 / 底部弹层
-    └── screens/
-        ├── PersonaSelect.js   选人格
-        ├── Home.js            主界面：3D 舞台 + 养成面板
-        ├── Chat.js            聊天
-        └── Settings.js        模型配置与数据管理
+├── src/
+│   ├── theme.js               人格设定、配色、3D 形象参数、等级与礼物表
+│   ├── store.js               养成状态 + AsyncStorage 持久化 + 时间衰减
+│   ├── llm.js                 大模型调用 + 离线兜底引擎 + 记忆抽取
+│   ├── useStore.js            React 侧的 store 订阅
+│   ├── chatEngine.js          带 function calling 的对话层（联网 / 提醒 / 记忆）
+│   ├── useVoice.js            把录音→识别→大模型→语音→播放串起来的 Hook
+│   ├── voice/
+│   │   ├── tts.js             情绪语音合成（三家服务商 + 情绪标记解析）
+│   │   ├── stt.js             语音识别（Whisper / Groq / Azure）+ 粤语检测
+│   │   └── session.js         录音 / 打断检测 / 音频播放队列
+│   ├── services/
+│   │   ├── tools.js           给大模型用的工具箱 + 不支持工具时的降级
+│   │   ├── web.js             联网搜索（Tavily / Brave / Serper）+ 天气
+│   │   ├── reminders.js       iPhone 本地通知提醒
+│   │   └── songs.js           程序化合成的儿歌（无版权风险）
+│   ├── config/
+│   │   └── providers.js       语音 / 识别 / 搜索服务商的清单
+│   ├── three/
+│   │   └── companion.js       3D 角色几何构建 + 动画 + 粒子（平台无关）
+│   ├── components/
+│   │   ├── Avatar3D.web.js    web 渲染（canvas + three）
+│   │   ├── Avatar3D.native.js 原生渲染（expo-gl + three）
+│   │   ├── VoiceMic.js        ChatGPT 式麦克风按钮
+│   │   └── ui.js              玻璃卡 / 进度条 / 按钮 / 底部弹层
+│   └── screens/
+│       ├── PersonaSelect.js   选人格
+│       ├── Home.js            主界面：3D 舞台 + 养成面板 + 麦克风
+│       ├── Chat.js            聊天
+│       ├── Settings.js        模型配置与数据管理
+│       └── VoiceSettings.js   语音 / 语言 / 联网 / 儿童模式
+├── tools/
+│   ├── tts.test.mjs           情绪切分回归测试
+│   ├── songs.test.mjs         儿歌音频合成测试
+│   └── lint-styles.mjs        静态检查：找出引用了但没定义的样式
+└── 迁移说明.md                换电脑 / 迁移说明
 ```
 
 ---

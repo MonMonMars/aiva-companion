@@ -12,6 +12,8 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import Avatar3D from '../components/Avatar3D';
+import VoiceMic from '../components/VoiceMic';
+import { useVoice } from '../useVoice';
 import { GlassCard, PrimaryButton, StatBar, BottomSheet, shadeColor } from '../components/ui';
 import { getPersona, pick, GIFTS, UI, levelFromAffection, LEVEL_TITLES, affectionToNext } from '../theme';
 import { useStore } from '../useStore';
@@ -35,6 +37,20 @@ export default function Home({ personaId, onChat, onSettings, comeback }) {
   const [sheet, setSheet] = useState(null); // 'gift' | 'memory' | null
   const [memText, setMemText] = useState('');
   const [floaters, setFloaters] = useState([]); // "+5 亲密" 飘字
+
+  const voice = useVoice({
+    personaId,
+    snap,
+    history: snap.history || [],
+    kidMode: !!snap.config?.kidMode,
+    lang: snap.config?.spokenLang || 'auto',
+  });
+
+  // 三个 Key 里有一个能通就能说话。没有的话 UI 要明说原因，而不是让用户对着按钮干点。
+  const voiceCfgReady = useMemo(() => {
+    const v = snap.config?.voice || {};
+    return !!(v.openaiKey || (v.azureKey && v.azureRegion) || v.elevenKey);
+  }, [snap.config]);
 
   const level = levelFromAffection(snap.affection);
   const levelTitle = LEVEL_TITLES[level - 1] || '陌生';
@@ -239,12 +255,41 @@ export default function Home({ personaId, onChat, onSettings, comeback }) {
           </View>
         </View>
 
-        {/* 台词泡 */}
+        {/* 台词泡 —— 说话时优先显示角色正在念的这句 */}
         <View style={styles.bubbleWrap}>
           <GlassCard style={styles.bubble}>
-            <Text style={styles.bubbleText}>{bubble || '…'}</Text>
+            <Text style={styles.bubbleText}>
+              {voice.state === 'idle' ? bubble || '…' : subtitle || bubble || '…'}
+            </Text>
           </GlassCard>
         </View>
+
+        {/* 语音对话：麦克风 + 字幕 */}
+        <GlassCard style={styles.voiceCard}>
+          <VoiceMic session={null} state={voice.state} level={voice.level} size={82} onPress={voice.toggle} />
+          <View style={{ flex: 1, marginLeft: 14, gap: 4 }}>
+            <Text style={styles.voiceTitle}>
+              {voice.state === 'recording' ? '我在听，说完点一下右边的圆'
+                : voice.state === 'thinking' ? '在想…'
+                  : voice.state === 'speaking' ? '开口就能打断我'
+                    : '按一下，像打电话那样说话'}
+            </Text>
+            {voice.error ? (
+              <Text style={styles.voiceErr} numberOfLines={2}>{voice.error}</Text>
+            ) : (
+              <Text style={styles.voiceHint} numberOfLines={2}>
+                {voiceCfgReady
+                  ? '支持粤语 · 普通话 · 英语　·　会笑会唱歌会查资料'
+                  : '还没配语音 Key —— 去右上角齿轮里填，就能开口说话'}
+              </Text>
+            )}
+          </View>
+          {(voice.state === 'speaking' || voice.state === 'thinking') && (
+            <Pressable onPress={voice.cancel} style={styles.stopBtn}>
+              <Text style={styles.stopBtnText}>停止</Text>
+            </Pressable>
+          )}
+        </GlassCard>
 
         {/* 养成面板 */}
         <GlassCard style={styles.panel}>
@@ -381,6 +426,21 @@ const styles = StyleSheet.create({
   bubbleWrap: { marginTop: 12 },
   bubble: { paddingVertical: 13, paddingHorizontal: 16 },
   bubbleText: { fontSize: 14.5, lineHeight: 22, color: UI.text },
+
+  voiceCard: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+  },
+  voiceTitle: { fontSize: 13.5, fontWeight: '700', color: UI.text },
+  voiceHint: { fontSize: 11.5, color: UI.textDim, lineHeight: 16 },
+  voiceErr: { fontSize: 11.5, color: '#C0392B', lineHeight: 16 },
+  stopBtn: {
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+  },
+  stopBtnText: { fontSize: 12, fontWeight: '700', color: UI.textDim },
 
   panel: { marginTop: 14 },
   panelNote: { fontSize: 11.5, color: UI.textDim, lineHeight: 18, marginTop: 4 },

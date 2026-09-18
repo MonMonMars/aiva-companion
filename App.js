@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Pressable } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import PersonaSelect from './src/screens/PersonaSelect';
 import Home from './src/screens/Home';
 import Chat from './src/screens/Chat';
 import Settings from './src/screens/Settings';
+import VoiceSettings from './src/screens/VoiceSettings';
 import { loadStore, getSnapshot, subscribe } from './src/store';
 
 export default function App() {
@@ -66,7 +67,21 @@ export default function App() {
           personaId={personaId}
           onBack={() => setScreen('home')}
           onSwitchPersona={() => setScreen('select')}
+          onVoice={() => setScreen('voice')}
         />
+        <StatusBar style="dark" />
+      </>
+    );
+  }
+
+  // 说话 / 联网 / 语言 / 儿童模式
+  if (screen === 'voice') {
+    return (
+      <>
+        <VoiceSettings personaId={personaId} />
+        <Pressable style={styles.voiceBack} onPress={() => setScreen('settings')}>
+          <Text style={styles.voiceBackText}>‹ 返回</Text>
+        </Pressable>
         <StatusBar style="dark" />
       </>
     );
@@ -88,4 +103,10 @@ export default function App() {
 const styles = StyleSheet.create({
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: '#FFF7FB' },
   loadingText: { fontSize: 13, color: '#9A8B9D' },
+  voiceBack: {
+    position: 'absolute', top: 42, right: 18,
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+  },
+  voiceBackText: { fontSize: 13, fontWeight: '700', color: '#3A2C3D' },
 });

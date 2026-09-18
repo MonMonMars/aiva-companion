@@ -46,9 +46,16 @@ export function buildMessages(personaId, snap, history, userText) {
 
 /**
  * 调用 OpenAI 兼容接口
- * @returns {Promise<{ok:boolean, content?:string, error?:string}>}
+ *
+ * @param {object} o
+ * @param {object} o.config
+ * @param {Array}  o.messages
+ * @param {number} [o.temperature]
+ * @param {Array}  [o.tools]       function calling 工具定义
+ * @param {string} [o.toolChoice]  'auto' | 'none' | {type:'function',function:{name}}
+ * @returns {Promise<{ok:boolean, content?:string, toolCalls?:Array, error?:string}>}
  */
-export async function requestCompletion({ config, messages, temperature = 0.9 }) {
+export async function requestCompletion({ config, messages, temperature = 0.9, tools, toolChoice }) {
   const baseUrl = String(config.baseUrl || '').replace(/\/+$/, '');
   const apiKey = String(config.apiKey || '').trim();
 
@@ -61,6 +68,18 @@ export async function requestCompletion({ config, messages, temperature = 0.9 })
   const timer = setTimeout(() => controller.abort(), 45000);
 
   try {
+    const body = {
+      model: config.model,
+      messages,
+      temperature,
+      max_tokens: 400,
+      stream: false,
+    };
+    if (tools?.length) {
+      body.tools = tools;
+      body.tool_choice = toolChoice || 'auto';
+    }
+
     const res = await fetch(url, {
       method: 'POST',
       signal: controller.signal,
@@ -68,13 +87,7 @@ export async function requestCompletion({ config, messages, temperature = 0.9 })
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        model: config.model,
-        messages,
-        temperature,
-        max_tokens: 400,
-        stream: false,
-      }),
+      body: JSON.stringify(body),
     });
 
     const text = await res.text();
@@ -95,11 +108,17 @@ export async function requestCompletion({ config, messages, temperature = 0.9 })
       return { ok: false, error: '返回不是合法 JSON，请检查 baseUrl 是否正确' };
     }
 
-    const content = json?.choices?.[0]?.message?.content;
-    if (typeof content !== 'string') {
-      return { ok: false, error: '返回结果格式异常（没有 choices[0].message.content）' };
+    const msg = json?.choices?.[0]?.message;
+    if (!msg) {
+      return { ok: false, error: '返回结果格式异常（没有 choices[0].message）' };
     }
-    return { ok: true, content: content.trim() };
+
+    // 模型可能同时给文字和工具调用，两者都要留着
+    return {
+      ok: true,
+      content: typeof msg.content === 'string' ? msg.content.trim() : '',
+      toolCalls: Array.isArray(msg.tool_calls) && msg.tool_calls.length ? msg.tool_calls : undefined,
+    };
   } catch (e) {
     if (e?.name === 'AbortError') return { ok: false, error: '请求超时（45s）' };
     return { ok: false, error: e?.message || '网络请求失败' };

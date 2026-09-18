@@ -10,7 +10,7 @@ import * as S from '../store';
 import { GlassCard, PrimaryButton, Empty } from '../components/ui';
 import { requestCompletion } from '../llm';
 
-export default function Settings({ personaId, onBack, onSwitchPersona }) {
+export default function Settings({ personaId, onBack, onSwitchPersona, onVoice }) {
   const snap = useStore();
   const cfg = snap.config || {};
   const [baseUrl, setBaseUrl] = useState(cfg.baseUrl || '');
@@ -83,6 +83,30 @@ export default function Settings({ personaId, onBack, onSwitchPersona }) {
           <PrimaryButton title={testing ? '测试中…' : '测试连接'} icon="🔌" color="#5A6B8C" onPress={test} compact />
           <PrimaryButton title="保存" icon="💾" color="#3FA372" onPress={save} compact />
         </View>
+      </GlassCard>
+
+      <GlassCard style={{ marginTop: 14 }}>
+        <Text style={styles.sectionTitle}>说话与联网</Text>
+        <Text style={styles.sectionNote}>
+          让角色真的开口说话：选语音服务商、挑音色、决定说粤语还是普通话还是英语，
+          再配上联网搜索查天气新闻。
+        </Text>
+        <View style={styles.rowBtns}>
+          <PrimaryButton title="说话 · 联网设置" icon="🎙️" color="#FF6F9C" onPress={onVoice} compact />
+        </View>
+      </GlassCard>
+
+      <GlassCard style={{ marginTop: 14 }}>
+        <Text style={styles.sectionTitle}>版权与合规</Text>
+        <Text style={styles.sectionNote}>
+          本项目的代码、界面元素、生成的语音与音乐全部由程序在本地合成，没有使用任何第三方的受版权保护素材；
+          内置儿歌的旋律均取自公共领域曲目。
+        </Text>
+        <Text style={styles.sectionNote}>
+          需要注意：assets/models 里的三个 3D 模型是从第三方图库下载的，其商用授权未经确认。
+          正式上架前建议替换成自行制作、或明确标注 CC0 / 可商用授权的模型。
+          详见 README.md 的《版权与合规》一节。
+        </Text>
       </GlassCard>
 
       <GlassCard style={{ marginTop: 14 }}>
