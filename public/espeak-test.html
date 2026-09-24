@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AIVA 离线 TTS 自测 · eSpeak / Edge / 浏览器</title>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: -apple-system, "PingFang HK", "Microsoft YaHei", sans-serif;
+           max-width: 720px; margin: 24px auto; padding: 0 16px; color: #222; }
+    h1 { font-size: 20px; }
+    .sub { color: #666; font-size: 13px; margin: 4px 0 18px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+    button { font-size: 14px; padding: 10px 14px; border: 1px solid #ccc;
+             border-radius: 10px; background: #fff; cursor: pointer; }
+    button:hover { background: #f5f5f5; }
+    button:disabled { opacity: .5; cursor: default; }
+    .status { font-weight: 600; min-height: 22px; }
+    .status.ok { color: #1a7f37; }
+    .status.warn { color: #b88500; }
+    .status.err { color: #c00; }
+    pre { background: #0d1117; color: #d6e7ff; padding: 12px; border-radius: 10px;
+          font-size: 12px; max-height: 320px; overflow: auto; white-space: pre-wrap; }
+    code { background: #eee; padding: 1px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>🎙️ AIVA 离线 TTS 自测页</h1>
+  <div class="sub">
+    用来确认「免 Key 双引擎」在你的浏览器里真的能出声（eSpeak WASM 离线 + 浏览器自带/Edge 神经音）。
+    打开方式：<code>expo start --web</code> 后访问 <code>/espeak-test.html</code>。
+  </div>
+
+  <div class="row">
+    <button id="btnEspeak">🔊 eSpeak 粤语 (zhy)</button>
+    <button id="btnBrowser">🔊 浏览器自带粤语</button>
+    <button id="btnEdge">🔊 Edge 神经音 (zh-HK)</button>
+  </div>
+
+  <div id="status" class="status">就绪。点上面任意按钮试试。</div>
+  <pre id="log">（日志）
+</pre>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const statusEl = $('status');
+    const logEl = $('log');
+    const YUE_TEXT = '你好呀，我系你嘅好拍档，今日过得好唔好？';
+    let log = '';
+    function out(msg, cls) {
+      log += msg + '\n';
+      logEl.textContent = log;
+      logEl.scrollTop = logEl.scrollHeight;
+      if (cls) { statusEl.className = 'status ' + cls; statusEl.textContent = msg; }
+    }
+    function setStatus(msg, cls) { statusEl.className = 'status ' + (cls||''); statusEl.textContent = msg; }
+
+    const ESPEAK_BASE = '/espeakng/';
+    function loadScriptOnce(src) {
+      return new Promise((resolve) => {
+        if (document.querySelector(`script[src="${src}"]`)) return resolve(true);
+        const s = document.createElement('script');
+        s.src = src; s.async = true;
+        s.onload = () => resolve(true);
+        s.onerror = () => resolve(false);
+        document.head.appendChild(s);
+      });
+    }
+    function loadEspeak() {
+      return loadScriptOnce(ESPEAK_BASE + 'espeakng-simple.js').then((ok) =>
+        ok && window.SimpleTTS ? 'simple'
+          : (loadScriptOnce(ESPEAK_BASE + 'espeakng.min.js').then((o2) => (o2 && window.eSpeakNG ? 'raw' : null)))
+      );
+    }
+
+    // ---- eSpeak（离线 WASM）----
+    $('btnEspeak').addEventListener('click', async () => {
+      setStatus('正在加载 eSpeak WASM…');
+      $('btnEspeak').disabled = true;
+      const t0 = performance.now();
+      try {
+        const kind = await loadEspeak();
+        if (!kind) throw new Error('espeakng 脚本未加载，确认 /espeakng/ 资源齐全');
+        out(`加载方式：${kind}`);
+        if (kind === 'simple') {
+          const t = new window.SimpleTTS({ workerPath: ESPEAK_BASE + 'espeakng.worker.js', defaultVoice: 'zhy' });
+          await new Promise((done) => t.onReady(() => done()));
+          out('SimpleTTS 就绪，开始合成粤语…');
+          t.speak(YUE_TEXT, { voice: 'zhy', rate: 175, pitch: 50, volume: 1.0 }, (audioData, sampleRate) => {
+            if (!audioData) throw new Error('eSpeak 没有返回音频');
+            const pb = window.SimpleTTS.playAudioData(audioData, sampleRate);
+            const secs = audioData.length / (sampleRate || 11025) + 0.3;
+            let ended = false;
+            const fin = () => { if (!ended) { ended = true; setStatus(`✓ eSpeak 粤语播放完成（${((performance.now()-t0)/1000).toFixed(1)}s）`, 'ok'); } };
+            if (pb && pb.source) pb.source.onended = fin;
+            setTimeout(fin, secs * 1000);
+          });
+        } else {
+          const api = new window.eSpeakNG(ESPEAK_BASE + 'espeakng.worker.js', () => {});
+          out('原始 eSpeakNG 就绪（此路径仅作兜底验证）');
+        }
+      } catch (e) {
+        out('❌ ' + (e.message || e), 'err');
+        setStatus('eSpeak 失败：' + (e.message || e), 'err');
+      } finally {
+        $('btnEspeak').disabled = false;
+      }
+    });
+
+    function pickYue(synth, neuralOnly) {
+      const vs = (synth.getVoices && synth.getVoices()) || [];
+      const yue = vs.filter((v) => /zh-HK|zh-Hant-HK|yue/i.test(v.lang || '') || /Cantonese|粵/i.test(v.name || ''));
+      if (neuralOnly) {
+        const n = yue.filter((v) => /HiuGaaiNeural|HiuMaanNeural|WanLungNeural|GaaiNeural|Microsoft Server Speech Text to Speech Voice \(zh-HK/i.test(v.name || ''));
+        return n[0] || null;
+      }
+      return yue[0] || null;
+    }
+    function synthSay(text, voice) {
+      return new Promise((resolve) => {
+        const synth = window.speechSynthesis;
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'zh-HK';
+        if (voice) { u.voice = voice; u.lang = voice.lang || 'zh-HK'; }
+        u.onend = () => resolve(true);
+        u.onerror = () => resolve(false);
+        synth.cancel();
+        synth.speak(u);
+      });
+    }
+
+    // ---- 浏览器自带粤语 ----
+    $('btnBrowser').addEventListener('click', async () => {
+      if (!window.speechSynthesis) return setStatus('此浏览器不支持 SpeechSynthesis', 'err');
+      setStatus('正在用浏览器自带粤语朗读…');
+      $('btnBrowser').disabled = true;
+      const v = pickYue(window.speechSynthesis, false);
+      out(v ? `选中嗓音：${v.name} (${v.lang})` : '⚠️ 这台设备没有粤语嗓音，会用默认声音念（可能变普通话口音）');
+      const ok = await synthSay(YUE_TEXT, v);
+      setStatus(ok ? '✓ 浏览器自带朗读结束' : '⚠️ 浏览器朗读未触发结束事件', ok ? 'ok' : 'warn');
+      $('btnBrowser').disabled = false;
+    });
+
+    // ---- Edge 神经音 ----
+    $('btnEdge').addEventListener('click', async () => {
+      if (!window.speechSynthesis) return setStatus('此浏览器不支持 SpeechSynthesis', 'err');
+      setStatus('正在挑微软神经 zh-HK 嗓音…');
+      $('btnEdge').disabled = true;
+      // Edge/Windows 上需要等 voicechanged 事件后列表才齐全
+      await new Promise((r) => { const s = window.speechSynthesis; if (s.getVoices().length) r(); else s.onvoiceschanged = r; setTimeout(r, 1500); });
+      const v = pickYue(window.speechSynthesis, true);
+      if (!v) {
+        out('⚠️ 这台浏览器没有微软神经 zh-HK 嗓音（用 Edge / Windows 上的 Edge 浏览器最稳）', 'warn');
+        setStatus('未找到 Edge 神经音 —— 改用浏览器自带粤语', 'warn');
+        const v2 = pickYue(window.speechSynthesis, false);
+        const ok = await synthSay(YUE_TEXT, v2);
+        setStatus(ok ? '✓ 已用浏览器自带粤语朗读' : '⚠️ 朗读未结束', ok ? 'ok' : 'warn');
+      } else {
+        out(`选中 Edge 神经音：${v.name}`);
+        const ok = await synthSay(YUE_TEXT, v);
+        setStatus(ok ? '✓ Edge 神经音朗读结束' : '⚠️ 朗读未结束', ok ? 'ok' : 'warn');
+      }
+      $('btnEdge').disabled = false;
+    });
+
+    out('页面已加载。点按钮开始测试。');
+  </script>
+</body>
+</html>

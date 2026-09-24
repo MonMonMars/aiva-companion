@@ -6,6 +6,9 @@ import React, { forwardRef, useEffect, useImperativeHandle, useRef } from 'react
 import { GLView } from 'expo-gl';
 import * as THREE from 'three';
 import { createCompanionScene } from '../three/companion';
+// ⚠️ 这个 import 之前是漏的。它在 try 块里被调到，ReferenceError 会被 catch 吞掉
+//    再走 onError —— 表现是"原生端 3D 直接降级成静态卡面"，而且不报有用的错。
+import { loadCompanionModel } from '../lib/companionModel';
 import { getPersona } from '../theme';
 
 const Avatar3D = forwardRef(function Avatar3D({ personaId, onError }, ref) {
@@ -14,6 +17,27 @@ const Avatar3D = forwardRef(function Avatar3D({ personaId, onError }, ref) {
   useImperativeHandle(ref, () => ({
     react: (kind) => compRef.current?.react(kind),
     setLookTarget: (x, y) => compRef.current?.setLookTarget(x, y),
+    /** 开始"说"一句 —— 只做口型，声音由 voice/session 那条线出 */
+    speak: (text, opts) => compRef.current?.speak(text, opts),
+    /** 闭嘴（打断 / 播完 / 切屏都要调，否则嘴会一直动） */
+    stopSpeaking: () => compRef.current?.stopSpeaking(),
+    /** 直接给面部表情（不依赖 TTS） */
+    setFaceEmotion: (tag) => compRef.current?.setFaceEmotion(tag),
+    hasFace: () => !!compRef.current?.hasFace?.(),
+
+    // --- 相机：单指拖空白区转、双指捏合缩放、双指上下拖平移 -----------------
+    orbitByPixels: (dx, dy, viewH) => compRef.current?.orbitByPixels(dx, dy, viewH),
+    zoomBy: (mult) => compRef.current?.zoomBy(mult),
+    panByPixels: (dy, viewH) => compRef.current?.panByPixels(dy, viewH),
+    resetCamera: () => compRef.current?.resetCamera(),
+    cameraMoved: () => !!compRef.current?.cameraMoved?.(),
+
+    // --- 戳中判定 + 待机姿势 ------------------------------------------------
+    /** @returns {null | {part:'head'|'body', point, distance}} null = 戳空了 */
+    hitTest: (ndcX, ndcY) => compRef.current?.hitTest(ndcX, ndcY) ?? null,
+    setPoseState: (tag) => compRef.current?.setPoseState(tag),
+    playPose: (id) => compRef.current?.playPose(id),
+    currentPose: () => compRef.current?.currentPose?.() ?? null,
   }));
 
   useEffect(() => {

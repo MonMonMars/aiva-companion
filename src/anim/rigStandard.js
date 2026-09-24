@@ -47,35 +47,68 @@ export const BONE_REST = BONES.reduce((m, [n, , v]) => ((m[n] = v), m), {});
 // ---------------------------------------------------------------------------
 // 别名表：各家人形骨架命名 -> 标准名
 // ---------------------------------------------------------------------------
+//
+// ⚠️ 两张人形骨架命名体系都要覆盖，缺一张就是 0% 覆盖率：
+//
+//   · Mixamo / Blender Rigify / 3ds Max Biped —— 上面那批（leftarm / bip01lthigh …）
+//   · **VRM / PMX / MMD** —— 下面前缀 `vrm_` 的那批
+//
+// 第二张是踩坑补的：官方 Kizuna AI 的 VRM 骨骼叫 `J_C_hip` / `J_L_uparm` /
+// `J_L_lowarm` / `J_L_thigh` / `J_L_lowleg`（C=center、L/R=左右、日式缩写），
+// 和 Mixamo 命名一个都对不上，rigDriver 直接判定"认不出"放弃驱动 ——
+// 角色能显示，但头不会跟手动、被摸不会抬手。
+// 注意 norm() 会剥掉下划线，所以 `J_L_uparm` 要写成 `jluparm`。
 const ALIAS_PAIRS = {
-  Hips: ['hips', 'pelvis', 'root', 'jbipchips', 'jbipc pelvis', 'bip01pelvis', 'armaturehips', 'mixamorighips', 'jbipchips'],
-  Spine: ['spine', 'spine01', 'spine1', 'jbipcspine', 'bip01spine', 'pelvisspine'],
-  Spine1: ['spine1', 'spine02', 'spine2', 'chest', 'jbipcchest', 'upperchest', 'bip01spine1'],
-  Spine2: ['spine2', 'spine03', 'spine3', 'upperchest', 'jbipcupperchest', 'chest2', 'bip01spine2'],
-  Neck: ['neck', 'neck01', 'neck1', 'jbipcneck', 'bip01neck'],
-  Head: ['head', 'head01', 'jbipchead', 'bip01head'],
+  Hips: ['hips', 'pelvis', 'root', 'jbipchips', 'jbipc pelvis', 'bip01pelvis', 'armaturehips', 'mixamorighips', 'jbipchips',
+    'jchip', 'jcroot', 'jhips', 'jbipc hips'],
+  Spine: ['spine', 'spine01', 'spine1', 'jbipcspine', 'bip01spine', 'pelvisspine',
+    'jcspinea', 'jcspine1', 'jcspine01', 'jclowerbody', 'jcwaist'],
+  Spine1: ['spine1', 'spine02', 'spine2', 'chest', 'jbipcchest', 'upperchest', 'bip01spine1',
+    'jcspineb', 'jcspine2', 'jcspine02', 'jcupperbody'],
+  Spine2: ['spine2', 'spine03', 'spine3', 'upperchest', 'jbipcupperchest', 'chest2', 'bip01spine2',
+    'jcspinec', 'jcspine3', 'jcspine03'],
+  Neck: ['neck', 'neck01', 'neck1', 'jbipcneck', 'bip01neck',
+    'jcneck', 'jcneck1'],
+  Head: ['head', 'head01', 'jbipchead', 'bip01head',
+    'jchead', 'jchead1'],
   HeadTop_End: ['headtopend', 'headtop', 'headtop01', 'skulltop', 'topofhead'],
 
-  LeftShoulder: ['leftshoulder', 'lshoulder', 'claviclel', 'leftclavicle', 'shoulderl', 'leftshoulder01', 'jbipclshoulder', 'bip01lclavicle'],
-  LeftArm: ['leftarm', 'larm', 'upperarml', 'leftupperarm', 'armleft', 'jbipclupperarm', 'bip01lupperarm'],
-  LeftForeArm: ['leftforearm', 'lforearm', 'lowerarml', 'leftlowerarm', 'forearmleft', 'elbowl', 'jbipcllowerarm', 'bip01lforearm'],
-  LeftHand: ['lefthand', 'lhand', 'handl', 'lefthand01', 'jbipclhand', 'bip01lhand'],
+  LeftShoulder: ['leftshoulder', 'lshoulder', 'claviclel', 'leftclavicle', 'shoulderl', 'leftshoulder01', 'jbipclshoulder', 'bip01lclavicle',
+    'jlclavicle', 'jlshoulder', 'jbiplclavicle'],
+  LeftArm: ['leftarm', 'larm', 'upperarml', 'leftupperarm', 'armleft', 'jbipclupperarm', 'bip01lupperarm',
+    'jluparm', 'jlupperarm', 'jlarm', 'jbiplupperarm'],
+  LeftForeArm: ['leftforearm', 'lforearm', 'lowerarml', 'leftlowerarm', 'forearmleft', 'elbowl', 'jbipcllowerarm', 'bip01lforearm',
+    'jllowarm', 'jllowerarm', 'jlforearm', 'jbipllowerarm'],
+  LeftHand: ['lefthand', 'lhand', 'handl', 'lefthand01', 'jbipclhand', 'bip01lhand',
+    'jlhand', 'jbiplhand'],
 
-  RightShoulder: ['rightshoulder', 'rshoulder', 'clavicler', 'rightclavicle', 'shoulderr', 'rightshoulder01', 'jbipcrshoulder', 'bip01rclavicle'],
-  RightArm: ['rightarm', 'rarm', 'upperarmr', 'rightupperarm', 'armright', 'jbipcrupperarm', 'bip01rupperarm'],
-  RightForeArm: ['rightforearm', 'rforearm', 'lowerarmr', 'rightlowerarm', 'forearmright', 'elbowr', 'jbipcrlowerarm', 'bip01rforearm'],
-  RightHand: ['righthand', 'rhand', 'handr', 'righthand01', 'jbipcrhand', 'bip01rhand'],
+  RightShoulder: ['rightshoulder', 'rshoulder', 'clavicler', 'rightclavicle', 'shoulderr', 'rightshoulder01', 'jbipcrshoulder', 'bip01rclavicle',
+    'jrclavicle', 'jrshoulder', 'jbiprclavicle'],
+  RightArm: ['rightarm', 'rarm', 'upperarmr', 'rightupperarm', 'armright', 'jbipcrupperarm', 'bip01rupperarm',
+    'jruparm', 'jrupperarm', 'jrarm', 'jbiprupperarm'],
+  RightForeArm: ['rightforearm', 'rforearm', 'lowerarmr', 'rightlowerarm', 'forearmright', 'elbowr', 'jbipcrlowerarm', 'bip01rforearm',
+    'jrlowarm', 'jrlowerarm', 'jrforearm', 'jbiprlowerarm'],
+  RightHand: ['righthand', 'rhand', 'handr', 'righthand01', 'jbipcrhand', 'bip01rhand',
+    'jrhand', 'jbiprhand'],
 
-  LeftUpLeg: ['leftupleg', 'lupleg', 'thighl', 'leftthigh', 'upperlegl', 'leftupperleg', 'jbipclupperleg', 'bip01lthigh'],
-  LeftLeg: ['leftleg', 'lleg', 'calfl', 'lcalf', 'shinl', 'leftshin', 'lowerlegl', 'jbipcllowerleg', 'bip01lcalf'],
-  LeftFoot: ['leftfoot', 'lfoot', 'footl', 'jbipclfoot', 'bip01lfoot'],
-  LeftToeBase: ['lefttoebase', 'ltoebase', 'toel', 'lefttoe', 'balll', 'leftball', 'jbipcltoe', 'bip01ltoe0'],
+  LeftUpLeg: ['leftupleg', 'lupleg', 'thighl', 'leftthigh', 'upperlegl', 'leftupperleg', 'jbipclupperleg', 'bip01lthigh',
+    'jlthigh', 'jlupleg', 'jlupperleg', 'jbiplupperleg'],
+  LeftLeg: ['leftleg', 'lleg', 'calfl', 'lcalf', 'shinl', 'leftshin', 'lowerlegl', 'jbipcllowerleg', 'bip01lcalf',
+    'jllowleg', 'jlshin', 'jlcalf', 'jlleg', 'jbipllowerleg'],
+  LeftFoot: ['leftfoot', 'lfoot', 'footl', 'jbipclfoot', 'bip01lfoot',
+    'jlfoot', 'jbiplfoot'],
+  LeftToeBase: ['lefttoebase', 'ltoebase', 'toel', 'lefttoe', 'balll', 'leftball', 'jbipcltoe', 'bip01ltoe0',
+    'jltoebase', 'jltoe'],
   LeftToe_End: ['lefttoeend', 'ltoeend', 'toeendl', 'jbipcltoeend'],
 
-  RightUpLeg: ['rightupleg', 'rupleg', 'thighr', 'rightthigh', 'upperlegr', 'rightupperleg', 'jbipcrupperleg', 'bip01rthigh'],
-  RightLeg: ['rightleg', 'rleg', 'calfr', 'rcalf', 'shinr', 'rightshin', 'lowerlegr', 'jbipcrlowerleg', 'bip01rcalf'],
-  RightFoot: ['rightfoot', 'rfoot', 'footr', 'jbipcrfoot', 'bip01rfoot'],
-  RightToeBase: ['righttoebase', 'rtoebase', 'toer', 'righttoe', 'ballr', 'rightball', 'jbipcrtoe', 'bip01rtoe0'],
+  RightUpLeg: ['rightupleg', 'rupleg', 'thighr', 'rightthigh', 'upperlegr', 'rightupperleg', 'jbipcrupperleg', 'bip01rthigh',
+    'jrthigh', 'jrupleg', 'jrupperleg', 'jbiprupperleg'],
+  RightLeg: ['rightleg', 'rleg', 'calfr', 'rcalf', 'shinr', 'rightshin', 'lowerlegr', 'jbipcrlowerleg', 'bip01rcalf',
+    'jrlowleg', 'jrshin', 'jrcalf', 'jrleg', 'jbiprlowerleg'],
+  RightFoot: ['rightfoot', 'rfoot', 'footr', 'jbipcrfoot', 'bip01rfoot',
+    'jrfoot', 'jbiprfoot'],
+  RightToeBase: ['righttoebase', 'rtoebase', 'toer', 'righttoe', 'ballr', 'rightball', 'jbipcrtoe', 'bip01rtoe0',
+    'jrtoebase', 'jrtoe'],
   RightToe_End: ['righttoeend', 'rtoeend', 'toeendr', 'jbipcrtoeend'],
 };
 
@@ -103,6 +136,19 @@ export function matchBone(raw) {
   // 再退一步：去掉明显的 _01 / .001 尾巴
   const n2 = n.replace(/(0[1-9])$/, '');
   if (NORM_TO_CANON.has(n2)) return NORM_TO_CANON.get(n2);
+
+  // 最后一步：剥掉各家的命名空间前缀再查一次。
+  // VRM/PMX 生态的前缀花样多（J_ / J_Bip_ / J_Bip_C_ / Bip01 / Armature…），
+  // 与其穷举每个组合，不如把前缀剥掉再回到主表 —— 这样 `j_bip_c_hip`
+  // 最终会退化成 `hip`，命中 Hips。
+  const PREFIX = /^(?:j|jbip|jbipc|jbipc?|bip|bip01|biped|armature|rig|vrm|chr|mixamorig|def|ctrl)_?/;
+  let stripped = n;
+  for (let i = 0; i < 4; i++) {
+    const next = stripped.replace(PREFIX, '');
+    if (next === stripped) break;
+    stripped = next;
+    if (NORM_TO_CANON.has(stripped)) return NORM_TO_CANON.get(stripped);
+  }
   return null;
 }
 

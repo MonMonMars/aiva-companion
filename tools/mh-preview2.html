@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AIVA 捏人预览台 v2（带眼球与肤色）</title>
+<link rel="stylesheet" href="/tools/mh-preview2.css">
+<script type="importmap">
+{ "imports": { "three": "/node_modules/three/build/three.module.js",
+               "three/addons/": "/node_modules/three/examples/jsm/" } }
+</script>
+</head>
+<body>
+<div id="stage"></div>
+<div id="boot">正在加载模型…</div>
+<div id="meta">—</div>
+<div id="views">
+  <button class="btn" id="front">正面</button>
+  <button class="btn" id="face">面部</button>
+  <button class="btn" id="side">侧面</button>
+  <button class="btn" id="reset">复原</button>
+</div>
+<div id="panel">
+  <h1>AIVA 捏人预览台 <small>v2</small></h1>
+  <div id="tabs"></div>
+  <div id="hair"></div>
+  <div id="wear"></div>
+  <div id="presets"></div>
+  <div id="skins"></div>
+  <div id="sliders"></div>
+</div>
+<script type="module" src="/tools/mh-preview2.js"></script>
+</body>
+</html>

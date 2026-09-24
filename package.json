@@ -5,9 +5,10 @@
   "dependencies": {
     "@expo/metro-runtime": "~57.0.15",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@tencent-ai/workbuddy-cloud-sdk": "dev",
     "expo": "~57.0.23",
     "expo-asset": "~57.0.18",
-    "expo-av": "~57.0.8",
+    "expo-av": "16.0.8",
     "expo-file-system": "~57.0.7",
     "expo-gl": "~57.0.2",
     "expo-haptics": "~57.0.3",
@@ -26,7 +27,12 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "export:web": "expo export --platform web",
+    "lint": "node tools/lint-imports.mjs . && node tools/lint-styles.mjs .",
+    "test": "node tools/nativeSpeech.test.mjs && node tools/espeak.test.mjs && node tools/tts.test.mjs && node tools/songs.test.mjs && node tools/pipeline.test.mjs && node --import ./tools/ext-resolve.mjs tools/test-rig-semantics.mjs && node tools/inspect-character.mjs && node tools/test-realistic-pipeline.mjs",
+    "verify:models": "node tools/inspect-character.mjs && node tools/test-realistic-pipeline.mjs",
+    "verify:lips": "node tools/verify-lips.mjs"
   },
   "private": true
 }

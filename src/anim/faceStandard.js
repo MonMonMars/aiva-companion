@@ -69,7 +69,9 @@ const ALIAS = {
   smile: ['mouthSmileLeft', 'mouthSmileRight'],
   // 常见 morph 命名变体
   jawopen2: 'jawOpen', mo: 'jawOpen', mth: 'jawOpen',
-  left eyeblink: 'eyeBlinkLeft', righteyeblink: 'eyeBlinkRight',
+  // 带空格的键必须加引号 —— 不加会变成 `left` 和 `eyeblink` 两个标识符，
+  // 是语法错误（Metro 的 Babel 能容忍，但 Node / 原生 ESM 直接抛 SyntaxError）。
+  'left eyeblink': 'eyeBlinkLeft', righteyeblink: 'eyeBlinkRight',
   browleftdown: 'browDownLeft', browrightdown: 'browDownRight',
 };
 

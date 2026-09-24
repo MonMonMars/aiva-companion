@@ -1,0 +1,38 @@
+#stage { position: fixed; inset: 0; }
+#panel {
+  position: fixed; top: 0; right: 0; width: 340px; height: 100vh;
+  overflow-y: auto; background: #fff; border-left: 1px solid #e3e6ea;
+  padding: 12px 14px 28px; font: 13px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  color: #1d2129; box-sizing: border-box;
+}
+#panel h1 { font-size: 14px; margin: 0 0 10px; letter-spacing: .02em; }
+#panel h1 small { font-weight: 400; color: #86909c; margin-left: 6px; }
+#tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+#presets { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+#skins { display: flex; gap: 6px; margin-bottom: 12px; align-items: center; }
+#skins::before { content: "肤色"; color: #86909c; font-size: 12px; margin-right: 2px; }
+.btn {
+  border: 1px solid #d8dde3; background: #fff; color: #1d2129;
+  padding: 4px 9px; border-radius: 6px; cursor: pointer; font-size: 12px;
+}
+.btn:hover { border-color: #b9c2cc; background: #f7f9fb; }
+.btn.on { border-color: #2f7cf6; color: #2f7cf6; background: #eef4ff; font-weight: 600; }
+.btn.sw { width: 24px; height: 24px; padding: 0; border-radius: 50%; }
+.btn.sw.on { box-shadow: 0 0 0 2px #2f7cf6; border-color: #fff; }
+.row { margin-bottom: 9px; }
+.row label { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.row label span { font-size: 12.5px; }
+.row label code { font-size: 10.5px; color: #a8b0ba; }
+.row .ctl { display: flex; align-items: center; gap: 8px; }
+.row input[type=range] { flex: 1; accent-color: #2f7cf6; }
+.row output { width: 40px; text-align: right; font-variant-numeric: tabular-nums; color: #586272; font-size: 11.5px; }
+#views { position: fixed; left: 14px; bottom: 14px; display: flex; gap: 6px; }
+#meta {
+  position: fixed; left: 14px; top: 12px; font: 12px/1.4 ui-monospace, Consolas, monospace;
+  color: #586272; background: rgba(255,255,255,.82); padding: 5px 9px; border-radius: 6px;
+}
+#boot {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  font: 15px/1.5 -apple-system, "Microsoft YaHei", sans-serif; color: #586272;
+  background: #f2f3f5; pointer-events: none;
+}

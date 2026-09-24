@@ -8,11 +8,15 @@ import { View, Text, Pressable, Animated, Easing } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { UI } from '../theme';
 
+// 状态配色一律走 UI 语义色：这样"红色=在录、琥珀=在想、绿=在说"
+// 在 app 任何角落都是同一个意思，不用解释。
+// 内圈统一用 surfaceHi，把辨识度全部交给外圈——内圈再配色就会出现
+// 第二套色彩体系，那是 P5 明确反对的做法。
 const STATE_META = {
-  idle: { ring: '#C9A9BD', core: '#FFFFFF', label: '点一下说话', icon: '🎙️' },
-  recording: { ring: '#FF6F9C', core: '#FFE3EE', label: '正在听… 点一下发送', icon: '⬛' },
-  thinking: { ring: '#B79BC9', core: '#F3ECF8', label: '在想…', icon: '✳️' },
-  speaking: { ring: '#8FC8E8', core: '#E4F2FB', label: '点一下打断', icon: '⏸️' },
+  idle: { ring: UI.locked, core: UI.surfaceHi, label: '点一下说话', icon: '🎙️' },
+  recording: { ring: UI.danger, core: UI.surfaceHi, label: '正在听… 点一下发送', icon: '⬛' },
+  thinking: { ring: UI.warn, core: UI.surfaceHi, label: '在想…', icon: '✳️' },
+  speaking: { ring: UI.ok, core: UI.surfaceHi, label: '点一下打断', icon: '⏸️' },
 };
 
 export default function VoiceMic({ session, state, level, onPress, disabled, size = 96 }) {

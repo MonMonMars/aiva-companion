@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>VRM → GLB 验收台</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #eceef1; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #boot {
+    position: absolute; right: 12px; top: 12px; max-width: 46vw; max-height: 92vh; overflow: auto;
+    font: 12px/1.6 ui-monospace, Consolas, monospace;
+    background: rgba(255,255,255,.88); padding: 8px 12px; border-radius: 6px; white-space: pre; color: #1c2024;
+  }
+  #boot.hide { display: none; }
+</style>
+</head>
+<body>
+<div id="boot">载入中…</div>
+<script type="importmap">
+{
+  "imports": {
+    "three": "/node_modules/three/build/three.module.js",
+    "three/addons/": "/node_modules/three/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const Q = new URLSearchParams(location.search);
+const GLB = Q.get('glb') || '/assets/models4/aiva-shino-apose.glb';
+const VIEW = Q.get('view') || 'full';
+const EXPR = Q.get('expr') || '';      // 逗号分隔，如 eyeBlinkLeft,eyeBlinkRight
+const W = Number(Q.get('w') ?? 1);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xeceef1);
+// 模型是 KHR_materials_unlit（MeshBasicMaterial），灯光其实不影响它。
+// 但万一某个材质退化成 PBR，有灯就不至于全黑。
+scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+const key = new THREE.DirectionalLight(0xffffff, 1.6); key.position.set(2, 3, 4); scene.add(key);
+const fill = new THREE.DirectionalLight(0xffffff, 0.5); fill.position.set(-3, 1, 2); scene.add(fill);
+
+const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.01, 100);
+
+/** 骨节点名 -> 世界坐标（诊断头部位置用） */
+function boneWorld(root, re) {
+  let hit = null;
+  root.traverse((o) => { if (!hit && o.isBone && re.test(o.name)) hit = o; });
+  if (!hit) return null;
+  root.updateMatrixWorld(true);
+  return hit.getWorldPosition(new THREE.Vector3());
+}
+
+/** 一组网格的**世界**包围盒 */
+function worldBox(meshes) {
+  const bb = new THREE.Box3();
+  const v = new THREE.Vector3();
+  for (const m of meshes) {
+    const p = m.geometry.attributes.position;
+    for (let i = 0; i < p.count; i += 5) { v.fromBufferAttribute(p, i); bb.expandByPoint(m.localToWorld(v.clone())); }
+  }
+  return bb;
+}
+
+const info = { glb: GLB, loaded: false, error: null, meshes: [], morphs: [], applied: {}, bbox: null };
+
+// 先自己解一遍 GLB，确认「浏览器拿到的字节」和「我们写出来的」一致
+if (Q.get('debug') === '1') {
+  const buf = await (await fetch(GLB)).arrayBuffer();
+  const dv = new DataView(buf);
+  let o = 12, poj = null;
+  while (o + 8 <= dv.byteLength) {
+    const len = dv.getUint32(o, true), type = dv.getUint32(o + 4, true);
+    if (type === 0x4e4f534a) poj = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, o + 8, len)));
+    o += 8 + len;
+  }
+  info.raw = {
+    magic: dv.getUint32(0, true).toString(16),
+    accessors: poj?.accessors?.length,
+    meshTargets: poj?.meshes?.map((m) => (m.primitives[0].targets || []).map((t) => t.POSITION)),
+    targetNames: poj?.meshes?.[0]?.extras?.targetNames?.slice(0, 3),
+  };
+}
+
+// 抓 three 真正看到的那份 json：它也是走 JSON.parse 解 GLB 的 JSON 块
+window.__captured = null;
+const _jp = JSON.parse;
+JSON.parse = function (t, ...rest) {
+  const v = _jp.call(JSON, t, ...rest);
+  if (v && v.meshes && v.accessors) window.__captured = v;
+  return v;
+};
+
+try {
+  const gltf = await new GLTFLoader().loadAsync(GLB);
+  const root = gltf.scene;
+  root.updateMatrixWorld(true);
+
+  // 统一缩放 + 落地居中，和 src/three/companion.js attachModel 一个口径
+  const box = new THREE.Box3().setFromObject(root);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const TARGET = 2.05;
+  const s = TARGET / size.y;
+  root.scale.setScalar(s);
+  root.position.set(-center.x * s, -box.min.y * s, -center.z * s);
+  info.bbox = [size.x.toFixed(3), size.y.toFixed(3), size.z.toFixed(3)].join(' x ');
+
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    o.frustumCulled = false;
+    const m = Array.isArray(o.material) ? o.material[0] : o.material;
+    info.meshes.push({
+      name: o.name,
+      verts: o.geometry.attributes.position?.count ?? 0,
+      mat: m?.type,
+      // ⚠️ 有没有贴图是本项目能不能保留原材质的判据（见 companion.js attachModel）
+      hasMap: !!m?.map,
+      targets: o.morphTargetDictionary ? Object.keys(o.morphTargetDictionary).length : 0,
+    });
+    if (o.morphTargetDictionary) {
+      for (const k of Object.keys(o.morphTargetDictionary)) info.morphs.push(k);
+      o.morphTargetInfluences.fill(0);
+    }
+    // 诊断：贴图到底有没有内容？全白贴图 = 采样点错了，不是材质问题
+    const tex = m?.map;
+    if (tex && !info.texInfo) {
+      const im = tex.image;
+      info.texInfo = { name: tex.name || '(无)', w: im?.width, h: im?.height, colorSpace: tex.colorSpace, flipY: tex.flipY };
+    }
+  });
+
+  // 灌表情
+  const names = EXPR.split(',').map((x) => x.trim()).filter(Boolean);
+  for (const n of names) {
+    let hit = 0;
+    root.traverse((o) => {
+      if (!o.isMesh || !o.morphTargetDictionary) return;
+      const i = o.morphTargetDictionary[n];
+      if (i === undefined) return;
+      o.morphTargetInfluences[i] = W;
+      hit++;
+    });
+    info.applied[n] = hit ? `${W}` : '未命中';
+  }
+
+  scene.add(root);
+  root.updateMatrixWorld(true);
+
+  const ang = Number(Q.get('ang') ?? 0) * Math.PI / 180;
+  // ⚠️ 拍"脸部特写"不该靠猜头在哪个高度。
+  //    第一版硬编码 headY=1.50，但模型被缩放到 2.05 米高、头在 ~1.8 米，
+  //    于是连拍三张"正面特写"全是腰腹 + 后背长发的近景 —— 看着像"模型全白没贴图"，
+  //    其实根本没看到脸。改成从**脸的几何**反推朝向和高度，一次就准。
+  let faceDir = Number(Q.get('dir') ?? 0);
+  let faceY = null;
+  // 头骨 / 眼睛的世界坐标实测 —— 拍特写全靠这两个数，不猜。
+  // ⚠️ 「脸朝哪边」靠**眼睛骨相对头骨的前后偏移**判定，不要靠猜 +Z/-Z：
+  //    第一版按"VRM 面朝 +Z"硬编码，连拍四张"正面特写"全是后脑勺的深蓝长发近景。
+  //    实测 J_Bip_C_Head 在 z=-0.03、双眼在更负的一侧，说明这个模型朝向是 -Z。
+  {
+    const hb = boneWorld(root, /^J_Bip_C_Head$/i) || boneWorld(root, /head/i);
+    const lEye = boneWorld(root, /Eye/i);
+    info.headBone = hb ? [+hb.x.toFixed(3), +hb.y.toFixed(3), +hb.z.toFixed(3)] : null;
+    info.eyeBone = lEye ? [+lEye.x.toFixed(3), +lEye.y.toFixed(3), +lEye.z.toFixed(3)] : null;
+    if (hb && lEye) {
+      // 眼睛在头骨前方；用这个差值定朝向，比任何规范假设都可靠
+      const dz = lEye.z - hb.z;
+      info.eyeForward = +dz.toFixed(4);
+      faceDir = dz >= 0 ? 0 : 180;
+      faceY = lEye.y;
+    } else if (hb) {
+      faceY = hb.y;
+    }
+  }
+  const A = (faceDir + Number(Q.get('ang') ?? 0)) * Math.PI / 180;
+  const D = Number(Q.get('dist') ?? 0);
+
+  if (VIEW === 'face') {
+    // 以「头骨」的世界坐标定位，而不是猜一个绝对高度。
+    // 没拿到头骨就退回脸几何包围盒的中心。
+    let target = boneWorld(root, /head/i);
+    if (!target && faceY !== null) target = new THREE.Vector3(0, faceY, 0);
+    if (!target) target = new THREE.Vector3(0, 1.75, 0);
+    // 眼睛在头骨略上方、略靠前
+    target.y += 0.06;
+    const d = D || 0.42;
+    camera.position.set(target.x + Math.sin(A) * d, target.y + 0.02, target.z + Math.cos(A) * d);
+    camera.lookAt(target.x, target.y - 0.01, target.z);
+    info.cam = { target: [+target.x.toFixed(3), +target.y.toFixed(3), +target.z.toFixed(3)], d, A: +A.toFixed(2) };
+  } else {
+    // ⚠️ 全身取景不要硬编码 y=1.15 / lookAt(0,1.0,0)：
+    //    实测那张"全身照"头顶被切、脚整个在画面外，就是因为模型 2.05 米高、
+    //    相机站在 1.15 米看 1.0 米，FOV 35° 只能覆盖约 1.6 米。
+    //    改成「按包围盒中心取景 + 由包围盒高度反推距离」，任何身高都能拍全。
+    const focusY = (box.min.y * s + box.max.y * s) / 2;
+    const halfH = (box.max.y - box.min.y) * s / 2;
+    const fovRad = camera.fov * Math.PI / 180;
+    // 留 18% 余量，别让头发尖贴到画面边缘
+    const d = D || (halfH / Math.tan(fovRad / 2)) * 1.18;
+    camera.position.set(Math.sin(A) * d, focusY + 0.05, Math.cos(A) * d);
+    camera.lookAt(0, focusY, 0);
+    info.cam = { d: +d.toFixed(3), focusY: +focusY.toFixed(3), A: +A.toFixed(2) };
+  }
+  renderer.render(scene, camera);
+  info.loaded = true;
+} catch (e) {
+  info.error = String(e?.message || e);
+  info.stack = String(e?.stack || '').split('\n').slice(0, 6).join('\n');
+  const c = window.__captured;
+  if (c) {
+    info.seen = {
+      accessors: c.accessors.length,
+      targets: c.meshes.map((m) => (m.primitives[0].targets || []).map((t) => t.POSITION)),
+      hasMinOn: c.accessors.map((a, i) => (a.min ? i : -1)).filter((i) => i >= 0),
+    };
+    // 直接复现 three 的那一行取值，看究竟哪一步是 undefined
+    const tg = c.meshes[0].primitives[0].targets;
+    info.probe = tg.map((t) => ({ idx: t.POSITION, resolved: c.accessors[t.POSITION] ? 'ok' : 'UNDEFINED', hasMin: c.accessors[t.POSITION] ? !!c.accessors[t.POSITION].min : null }));
+  }
+  console.error('[verify] ' + info.stack);
+}
+
+window.__v = info;
+if (Q.get('panel') !== '1') document.getElementById('boot').classList.add('hide');
+const boot = document.getElementById('boot');
+boot.textContent =
+  (info.error ? '❌ ' + info.error : '✅ ' + GLB.split('/').pop()) +
+  '\n' + info.meshes.map((m) => `   ${m.name.padEnd(14)} ${String(m.verts).padStart(6)}点 ${String(m.mat).replace('Mesh','').padEnd(12)} map=${m.hasMap ? '有' : '无'} targets=${m.targets}`).join('\n') +
+  '\nmorphs: ' + info.morphs.join(' ') +
+  '\napplied: ' + JSON.stringify(info.applied);
+</script>
+</body>
+</html>

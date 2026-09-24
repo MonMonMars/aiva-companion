@@ -4,7 +4,7 @@
 
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, Pressable, Alert, Platform } from 'react-native';
-import { PROVIDERS, UI } from '../theme';
+import { PROVIDERS, UI, inputFont } from '../theme';
 import { useStore } from '../useStore';
 import * as S from '../store';
 import { GlassCard, PrimaryButton, Empty } from '../components/ui';
@@ -81,7 +81,7 @@ export default function Settings({ personaId, onBack, onSwitchPersona, onVoice }
 
         <View style={styles.rowBtns}>
           <PrimaryButton title={testing ? '测试中…' : '测试连接'} icon="🔌" color="#5A6B8C" onPress={test} compact />
-          <PrimaryButton title="保存" icon="💾" color="#3FA372" onPress={save} compact />
+          <PrimaryButton title="保存" icon="💾" color={UI.ok} onPress={save} compact />
         </View>
       </GlassCard>
 
@@ -134,7 +134,7 @@ export default function Settings({ personaId, onBack, onSwitchPersona, onVoice }
             ])
           }
         >
-          <Text style={[styles.linkText, { color: '#D4648C' }]}>重置全部数据</Text>
+          <Text style={[styles.linkText, { color: UI.danger }]}>重置全部数据</Text>
           <Text style={styles.linkArrow}>›</Text>
         </Pressable>
       </GlassCard>
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
   inner: { padding: 18, paddingTop: 44 },
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
   back: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  backText: { fontSize: 32, color: '#3A2C3D', fontWeight: '300', lineHeight: 34 },
+  backText: { fontSize: 32, color: UI.text, fontWeight: '300', lineHeight: 34 },
   title: { fontSize: 17, fontWeight: '800', color: UI.text },
 
   sectionTitle: { fontSize: 15.5, fontWeight: '800', color: UI.text, marginBottom: 4 },
@@ -182,21 +182,23 @@ const styles = StyleSheet.create({
   provider: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(0,0,0,0.045)',
+    borderRadius: UI.radius,
+    borderWidth: 1,
+    borderColor: UI.hairline,
+    backgroundColor: UI.surfaceHi,
   },
-  providerActive: { backgroundColor: '#3A2C3D' },
+  providerActive: { backgroundColor: UI.accent },
   providerText: { fontSize: 12.5, fontWeight: '700', color: UI.textDim },
   providerTextActive: { color: '#fff' },
 
   field: { marginBottom: 12 },
   fieldLabel: { fontSize: 12, fontWeight: '700', color: UI.textDim, marginBottom: 6 },
   fieldInput: {
-    backgroundColor: '#F7F3F7',
+    backgroundColor: UI.surfaceTop,
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: Platform.select({ ios: 12, default: 10 }),
-    fontSize: 14,
+    fontSize: inputFont(14),   // <16 会让 iOS Safari 聚焦时整页放大
     color: UI.text,
   },
   rowBtns: { flexDirection: 'row', gap: 10, marginTop: 6 },
@@ -207,7 +209,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 13,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1ECF1',
+    borderBottomColor: UI.hairline,
   },
   linkText: { fontSize: 14.5, fontWeight: '600', color: UI.text },
   linkArrow: { fontSize: 20, color: '#C6B8C6' },

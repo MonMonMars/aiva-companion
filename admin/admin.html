@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<!--
+  AIVA 管理后台 —— 全局数值开关
+  ---------------------------------------------------------------------------
+  ★ 为什么是同源的一个独立页面：
+    云服务端对 Origin 做**精确匹配**，只有同一个域名下才算同一个应用。
+    后台如果独立部署到别的域名，拿到的是另一套 publishableKey、另一个数据库，
+    等于永远读不到主 app 的数据。所以必须挂在同一域名下（这里用 /admin.html）。
+
+  ★ 这里是 CDN 形态的 SDK（不带构建步骤的单文件 HTML）。
+    主 app 是 Metro 构建的项目，走的是 npm 包形态 —— 两者同一个 SDK、同一份 API，
+    只是加载方式不同。后台不进 Metro 主包，所以普通用户下载的那份 JS 里没有这段 UI。
+
+  ★ 权限真相：这里所有「能不能写」的判断都在数据库的 RLS 策略里，
+    页面上做的 admin 判断只是不让他白填。就算绕过页面直接调 API，非管理员一样写不动。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>AIVA 管理后台</title>
+<style>
+  :root {
+    --bg: #0F1017; --surface: #171822; --surface-hi: #1E202C;
+    --line: #2A2C3A; --text: #ECECF5; --dim: #8B8CA3;
+    --accent: #7C5CFF; --ok: #37D399; --danger: #FF6B81; --warn: #FFB454;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+  body {
+    font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 28px 20px 64px; }
+
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: .5px; }
+  .who { margin-left: auto; font-size: 12px; color: var(--dim); }
+  .who b { color: var(--text); font-weight: 700; }
+  .sub { font-size: 12.5px; color: var(--dim); margin: 6px 0 22px; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 12px; padding: 14px 16px; margin-bottom: 12px;
+  }
+  .field { margin-bottom: 12px; }
+  .field:last-child { margin-bottom: 0; }
+  label { display: block; font-size: 11.5px; font-weight: 700; color: var(--dim); margin-bottom: 5px; }
+  input, select {
+    width: 100%; padding: 10px 12px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--surface-hi); color: var(--text);
+    font-size: 14px; font-family: inherit;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+
+  button {
+    font-family: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer;
+    padding: 10px 18px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--surface-hi); color: var(--text);
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.ghost { background: transparent; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .row { display: flex; gap: 10px; align-items: center; }
+
+  .switch { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+  .switch .meta { flex: 1; min-width: 0; }
+  .switch .key { font-size: 13px; font-weight: 700; }
+  .switch .lab { font-size: 12px; color: var(--dim); }
+  .switch .hint { font-size: 11.5px; color: var(--dim); margin-top: 3px; opacity: .8; }
+
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; flex-shrink: 0; }
+  .seg button {
+    border: 0; border-radius: 0; padding: 6px 14px; font-size: 12px;
+    background: transparent; color: var(--dim);
+  }
+  .seg button.on { background: var(--accent); color: #fff; }
+
+  .val { width: 110px; flex-shrink: 0; text-align: right; }
+
+  .bar {
+    position: sticky; bottom: 0; margin-top: 18px; padding: 14px 0 0;
+    display: flex; gap: 10px; align-items: center;
+  }
+  .msg {
+    padding: 11px 14px; border-radius: 8px; font-size: 12.5px; margin-bottom: 14px;
+    border: 1px solid var(--line); background: var(--surface-hi); color: var(--text);
+  }
+  .msg.err { border-color: var(--danger); color: var(--danger); }
+  .msg.ok { border-color: var(--ok); color: var(--ok); }
+
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 800; padding: 2px 8px;
+    border-radius: 999px; background: var(--accent); color: #fff; margin-left: 8px; vertical-align: 2px;
+  }
+  .badge.dim { background: var(--line); color: var(--dim); }
+  .muted { color: var(--dim); font-size: 12px; }
+  .hide { display: none; }
+  code { font-size: 11.5px; color: var(--dim); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>AIVA 管理后台</h1>
+    <div id="who" class="who"></div>
+  </header>
+  <p class="sub">全局数值开关。改动会立刻对所有在线客户端生效（新值在下一次拉取时读到）。</p>
+
+  <div id="msg"></div>
+
+  <!-- 登录 -->
+  <div id="login" class="card hide">
+    <div class="row" style="margin-bottom:12px">
+      <div class="seg">
+        <button id="tabPwd" class="on">密码登录</button>
+        <button id="tabOtp">验证码登录</button>
+      </div>
+    </div>
+    <div class="field"><label>邮箱</label><input id="email" type="email" autocomplete="username" placeholder="you@example.com" /></div>
+    <div class="field" id="pwdField"><label>密码</label><input id="password" type="password" autocomplete="current-password" /></div>
+    <div class="field hide" id="codeField"><label>邮箱验证码</label><input id="code" placeholder="邮件里那串数字" /></div>
+    <div class="row">
+      <button id="go" class="primary">登录</button>
+      <button id="reset" class="ghost">忘记密码</button>
+    </div>
+    <p class="muted" style="margin-top:12px">
+      这里不提供注册。管理员身份由数据库侧授予（accounts 不在本次范围内，无法自助获取）——
+      这也意味着就算有人猜到后台地址，注册出来的普通账号照样什么都改不动。
+    </p>
+  </div>
+
+  <!-- 非管理员 -->
+  <div id="denied" class="card hide">
+    <div class="field">这个账号已经登录，但不是管理员。</div>
+    <p class="muted">
+      管理员身份记录在 <code>profiles.role</code> 里，只能由数据库侧的 SQL 授予，
+      前端没有任何自我提权的路径（这个表的 UPDATE 权限压根没开放给客户端）。
+    </p>
+    <div class="row" style="margin-top:12px"><button id="signout2">换个账号</button></div>
+  </div>
+
+  <!-- 开关列表 -->
+  <div id="panel" class="hide">
+    <div id="list"></div>
+    <div class="bar">
+      <button id="save" class="primary">保存改动</button>
+      <button id="reload" class="ghost">重新拉取</button>
+      <span id="state" class="muted"></span>
+    </div>
+    <p class="muted" style="margin-top:14px">
+      数值型改动会作用于：离线衰减速率、签到奖励、开局金币。布尔型作用于：是否开放注册、维护模式。
+      维护模式一开，所有客户端立刻停在维护页，<b>请先确认没有人正在使用</b>。
+    </p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
+<script>
+(function () {
+  // ⚠️ endpoint / publishableKey 由 tools/buildadmin.mjs 从 src/lib/cloudConfig.json 注入。
+  //    不要手改这两个值，也不要从 window.location 推导 —— 云端按 Origin 精确匹配。
+  const cloud = WorkBuddyCloud.createWorkBuddyCloud({
+    endpoint: '__CLOUD_ENDPOINT__',
+    publishableKey: '__CLOUD_PUBLISHABLE_KEY__',
+  });
+
+  const $ = (id) => document.getElementById(id);
+  const show = (id) => ['login', 'denied', 'panel'].forEach((k) => $(k).classList.toggle('hide', k !== id));
+  const say = (text, kind) => {
+    const el = $('msg');
+    if (!text) { el.className = ''; el.textContent = ''; return; }
+    el.className = 'msg ' + (kind || '');
+    el.textContent = text;
+  };
+
+  let mode = 'pwd';       // pwd | otp | reset
+  let otpCtx = null;      // SDK 返回的验证码上下文
+  let rows = [];          // 原始行
+  let edits = {};         // key -> 新值
+
+  function errText(e) {
+    if (!e) return '出了点问题';
+    if (e.kind === 'invalid_grant' || e.kind === 'unauthenticated') return '账号或密码不对';
+    if (e.kind === 'network' || e.kind === 'backend-unavailable') return '连不上服务器';
+    return e.message || '出了点问题';
+  }
+
+  function setFieldMode(m) {
+    mode = m;
+    $('pwdField').classList.toggle('hide', m === 'code');
+    $('codeField').classList.toggle('hide', m !== 'code');
+    $('tabPwd').classList.toggle('on', m === 'pwd' || m === 'reset');
+    $('tabOtp').classList.toggle('on', m === 'otp');
+    $('go').textContent = m === 'pwd' ? '登录' : m === 'otp' ? '发送验证码' : '确认新密码';
+    $('reset').textContent = m === 'reset' ? '‹ 返回' : '忘记密码';
+  }
+
+  async function afterLogin() {
+    say('检查权限…');
+    const { data, error } = await cloud.database.from('profiles').select('role').maybeSingle();
+    if (error) return say('读 profiles 失败：' + errText(error), 'err');
+
+    if (!data || data.role !== 'admin') {
+      say('');
+      show('denied');
+      return;
+    }
+    const { data: s } = await cloud.auth.getSession();
+    $('who').innerHTML = '已登录 <b>' + mask(s && s.user && s.user.email) + '</b><span class="badge">管理员</span>';
+    show('panel');
+    await reload();
+  }
+
+  function mask(email) {
+    const str = String(email || '');
+    const at = str.indexOf('@');
+    if (at <= 0) return '（已登录）';
+    const name = str.slice(0, at);
+    const keep = name.slice(0, Math.min(2, name.length));
+    return keep + '*'.repeat(Math.max(3, name.length - keep.length)) + '@' + str.slice(at + 1);
+  }
+
+  // ---- 开关列表 -----------------------------------------------------------
+  async function reload() {
+    const { data, error } = await cloud.database.from('app_settings')
+      .select('key,value,label,hint,updated_at').order('key');
+    if (error) return say('拉取失败：' + errText(error), 'err');
+    say('');
+    rows = data || [];
+    edits = {};
+    render();
+    $('state').textContent = rows.length + ' 个开关';
+  }
+
+  function render() {
+    $('list').innerHTML = rows.map((r) => {
+      const v = r.value;
+      if (typeof v === 'boolean' || v === 'true' || v === 'false') {
+        const b = v === true || v === 'true';
+        return ''
+          + '<div class="card switch" data-key="' + r.key + '">'
+          +   '<div class="meta">'
+          +     '<div class="key">' + esc(r.label) + '</div>'
+          +     '<div class="lab"><code>' + esc(r.key) + '</code></div>'
+          +     (r.hint ? '<div class="hint">' + esc(r.hint) + '</div>' : '')
+          +   '</div>'
+          +   '<div class="seg">'
+          +     '<button data-v="true" class="' + (b ? 'on' : '') + '">开</button>'
+          +     '<button data-v="false" class="' + (!b ? 'on' : '') + '">关</button>'
+          +   '</div>'
+          + '</div>';
+      }
+      return ''
+        + '<div class="card switch" data-key="' + r.key + '">'
+        +   '<div class="meta">'
+        +     '<div class="key">' + esc(r.label) + '</div>'
+        +     '<div class="lab"><code>' + esc(r.key) + '</code></div>'
+        +     (r.hint ? '<div class="hint">' + esc(r.hint) + '</div>' : '')
+        +   '</div>'
+        +   '<input class="val" type="number" step="any" value="' + esc(String(v)) + '" />'
+        + '</div>';
+    }).join('');
+
+    // 布尔：分段按钮
+    $('list').querySelectorAll('.card[data-key]').forEach((card) => {
+      const key = card.dataset.key;
+      card.querySelectorAll('.seg button').forEach((btn) => {
+        btn.onclick = () => {
+          card.querySelectorAll('.seg button').forEach((b) => b.classList.remove('on'));
+          btn.classList.add('on');
+          edits[key] = btn.dataset.v === 'true';
+          dirty();
+        };
+      });
+      const input = card.querySelector('input.val');
+      if (input) {
+        input.oninput = () => {
+          const n = Number(input.value);
+          if (!Number.isFinite(n)) return;
+          edits[key] = n;
+          dirty();
+        };
+      }
+    });
+  }
+
+  let dirtyCount = 0;
+  function dirty() {
+    dirtyCount = Object.keys(edits).length;
+    $('state').textContent = dirtyCount ? dirtyCount + ' 项待保存' : rows.length + ' 个开关（全部同步）';
+  }
+
+  async function save() {
+    const keys = Object.keys(edits);
+    if (!keys.length) return say('没有改动', 'ok');
+    $('save').disabled = true;
+    let ok = 0, failed = [];
+    for (const k of keys) {
+      // ⚠️ 必须 .select()：RLS 拒绝时既没有 error 也没有行，只返回空数组。
+      //    不看返回值就会把「没写成」当成「写成功」。
+      const res = await cloud.database.from('app_settings')
+        .update({ value: edits[k] }).eq('key', k).select('key');
+      if (res.error) failed.push(k + '（' + errText(res.error) + '）');
+      else if (!res.data || res.data.length === 0) failed.push(k + '（被拒绝：可能不是管理员）');
+      else ok++;
+    }
+    $('save').disabled = false;
+    if (failed.length) say(ok + ' 项已保存，以下失败：' + failed.join('，'), 'err');
+    else say('已保存 ' + ok + ' 项，客户端下次拉取生效', 'ok');
+    await reload();
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+  }
+
+  // ---- 事件 ---------------------------------------------------------------
+  $('save').onclick = save;
+  $('reload').onclick = reload;
+  $('tabPwd').onclick = () => setFieldMode('pwd');
+  $('tabOtp').onclick = () => setFieldMode('otp');
+
+  $('reset').onclick = () => {
+    if (mode === 'reset') return setFieldMode('pwd');
+    setFieldMode('reset');
+  };
+
+  $('signout2').onclick = async () => {
+    await cloud.auth.signOut();
+    location.reload();
+  };
+
+  $('go').onclick = async () => {
+    const email = $('email').value.trim();
+    const password = $('password').value;
+    const code = $('code').value.trim();
+    say('');
+    if (!email.includes('@')) return say('先填邮箱', 'err');
+
+    if (mode === 'reset') {
+      const done = await otpCtx.updateUser({ nonce: code, password });
+      if (done.error) return say(errText(done.error), 'err');
+      setFieldMode('pwd');
+      return say('密码已重置，用新密码登录', 'ok');
+    }
+
+    if (mode === 'pwd') {
+      const r = await cloud.auth.signInWithPassword({ email, password });
+      if (r.error) return say(errText(r.error), 'err');
+      return afterLogin();
+    }
+
+    // OTP 登录：两步
+    if (!otpCtx) {
+      const started = await cloud.auth.signInWithOtp({ email });
+      if (started.error) return say(errText(started.error), 'err');
+      otpCtx = started.data;
+      otpEmail = email;
+      $('codeField').classList.remove('hide');
+      return say('验证码已发到邮箱，填它完成登录', 'ok');
+    }
+    const done = await otpCtx.verify({ token: code });
+    if (done.error) return say(errText(done.error), 'err');
+    afterLogin();
+  };
+  let otpEmail = '';
+
+  // ---- 启动 ---------------------------------------------------------------
+  (async () => {
+    try {
+      const { data: s, error } = await cloud.auth.getSession();
+      if (!error && s) return afterLogin();
+    } catch (e) { /* 拉不到会话就当没登录 */ }
+    show('login');
+    setFieldMode('pwd');
+  })();
+})();
+</script>
+</body>
+</html>

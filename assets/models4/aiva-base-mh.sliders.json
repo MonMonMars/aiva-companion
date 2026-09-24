@@ -1,0 +1,531 @@
+{
+  "license": "MakeHuman assets CC0 1.0 (github.com/makehumancommunity/makehuman)",
+  "vertexCount": 14517,
+  "triangleCount": 26756,
+  "boneCount": 163,
+  "height": 1.7,
+  "sliders": [
+    {
+      "key": "BodyHeight",
+      "cn": "身高",
+      "group": "Body",
+      "index": 0,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "BodyProportions",
+      "cn": "理想比例",
+      "group": "Body",
+      "index": 1,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "Masculine",
+      "cn": "男性化",
+      "group": "Body",
+      "index": 2,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "Younger",
+      "cn": "幼龄",
+      "group": "Body",
+      "index": 3,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "Older",
+      "cn": "年长",
+      "group": "Body",
+      "index": 4,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "Muscle",
+      "cn": "肌肉",
+      "group": "Body",
+      "index": 5,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "Weight",
+      "cn": "体重",
+      "group": "Body",
+      "index": 6,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "TorsoLength",
+      "cn": "躯干长度",
+      "group": "Body",
+      "index": 7,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "TorsoWidth",
+      "cn": "躯干宽度",
+      "group": "Body",
+      "index": 8,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "TorsoDepth",
+      "cn": "躯干厚度",
+      "group": "Body",
+      "index": 9,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "TorsoVShape",
+      "cn": "倒三角",
+      "group": "Body",
+      "index": 10,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "NeckCirc",
+      "cn": "颈围",
+      "group": "Body",
+      "index": 11,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "ShoulderWidth",
+      "cn": "肩宽",
+      "group": "Body",
+      "index": 12,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "BustCirc",
+      "cn": "胸围",
+      "group": "Body",
+      "index": 13,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "WaistCirc",
+      "cn": "腰围",
+      "group": "Body",
+      "index": 14,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "NapeToWaist",
+      "cn": "背长",
+      "group": "Body",
+      "index": 15,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "WaistToHip",
+      "cn": "腰臀距",
+      "group": "Body",
+      "index": 16,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "HipsCirc",
+      "cn": "臀围",
+      "group": "Body",
+      "index": 17,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "HipWidth",
+      "cn": "髋宽",
+      "group": "Body",
+      "index": 18,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "Stomach",
+      "cn": "腹部",
+      "group": "Body",
+      "index": 19,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "BreastSize",
+      "cn": "胸部Size",
+      "group": "Body",
+      "index": 20,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "BreastFirmness",
+      "cn": "胸部挺度",
+      "group": "Body",
+      "index": 21,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "Buttocks",
+      "cn": "臀部",
+      "group": "Body",
+      "index": 22,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "ThighCirc",
+      "cn": "大腿围",
+      "group": "Body",
+      "index": 23,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "CalfCirc",
+      "cn": "小腿围",
+      "group": "Body",
+      "index": 24,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "ArmMuscle",
+      "cn": "上臂肌肉",
+      "group": "Body",
+      "index": 25,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "LegLength",
+      "cn": "腿长",
+      "group": "Body",
+      "index": 26,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "FootSize",
+      "cn": "脚掌",
+      "group": "Body",
+      "index": 27,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "HeadOval",
+      "cn": "脸型-椭圆",
+      "group": "Face",
+      "index": 28,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "HeadRound",
+      "cn": "脸型-圆",
+      "group": "Face",
+      "index": 29,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "HeadSquare",
+      "cn": "脸型-方",
+      "group": "Face",
+      "index": 30,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "HeadWidth",
+      "cn": "头宽",
+      "group": "Face",
+      "index": 31,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "HeadHeight",
+      "cn": "头长",
+      "group": "Face",
+      "index": 32,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "HeadDepth",
+      "cn": "头深",
+      "group": "Face",
+      "index": 33,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "ForeheadBulge",
+      "cn": "额头",
+      "group": "Face",
+      "index": 34,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "EyebrowHeight",
+      "cn": "眉位",
+      "group": "Face",
+      "index": 35,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "EyeSize",
+      "cn": "眼睛大小",
+      "group": "Face",
+      "index": 36,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "EyeHeight",
+      "cn": "眼高",
+      "group": "Face",
+      "index": 37,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "EyeSpacing",
+      "cn": "眼距",
+      "group": "Face",
+      "index": 38,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "EyeBag",
+      "cn": "卧蚕",
+      "group": "Face",
+      "index": 39,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "Epicanthus",
+      "cn": "内眦",
+      "group": "Face",
+      "index": 40,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "NoseWidth",
+      "cn": "鼻宽",
+      "group": "Face",
+      "index": 41,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "NoseHeight",
+      "cn": "鼻长",
+      "group": "Face",
+      "index": 42,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "NoseBridge",
+      "cn": "鼻梁",
+      "group": "Face",
+      "index": 43,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "NoseTipUp",
+      "cn": "鼻尖上翘",
+      "group": "Face",
+      "index": 44,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "NostrilWidth",
+      "cn": "鼻翼",
+      "group": "Face",
+      "index": 45,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "MouthWidth",
+      "cn": "嘴宽",
+      "group": "Face",
+      "index": 46,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "MouthDepth",
+      "cn": "嘴凸",
+      "group": "Face",
+      "index": 47,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "LipVolume",
+      "cn": "唇厚",
+      "group": "Face",
+      "index": 48,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "MouthCorners",
+      "cn": "嘴角",
+      "group": "Face",
+      "index": 49,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "Dimples",
+      "cn": "酒窝",
+      "group": "Face",
+      "index": 50,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "ChinWidth",
+      "cn": "下颌宽",
+      "group": "Face",
+      "index": 51,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "ChinHeight",
+      "cn": "下巴长",
+      "group": "Face",
+      "index": 52,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "JawProminent",
+      "cn": "下颌角",
+      "group": "Face",
+      "index": 53,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "CheekVolume",
+      "cn": "脸颊",
+      "group": "Face",
+      "index": 54,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "EarSize",
+      "cn": "耳大小",
+      "group": "Face",
+      "index": 55,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "EarPointed",
+      "cn": "精灵耳",
+      "group": "Face",
+      "index": 56,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    },
+    {
+      "key": "NeckLength",
+      "cn": "脖子长度",
+      "group": "Face",
+      "index": 57,
+      "min": -1,
+      "max": 1,
+      "def": 0
+    }
+  ]
+}

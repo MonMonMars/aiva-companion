@@ -14,7 +14,8 @@
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import { transcribe, detectLang } from './stt';
-import { synthesizeReply, stripEmotionTags } from './tts';
+import { synthesizeReply, stripEmotionTags, splitByEmotion } from './tts';
+import { speakNative, stopNative } from './nativeSpeech';
 
 // 低于这个值（dB）当作环境噪声。手机 mic 安静房间大概 -40 到 -50，
 // 正常说话距离 20cm 大概 -20 到 -10。取 -25 比较稳。
@@ -29,6 +30,11 @@ export class VoiceSession {
    * @param {(text:string) => Promise<string>} opts.askLLM 发文本给大模型，返回原始回复（含情绪标签）
    * @param {(patch:object) => void} opts.onState  状态回调给 UI
    * @param {(text:string) => void} opts.onSubtitle 逐句字幕
+   * @param {(text:string, emotion:string|null) => void} [opts.onSpeakSegment]
+   *        某一段音频**开始播放**时触发 —— 3D 角色靠它对口型。
+   *        必须是"开始播放"而不是"开始合成"：合成比播放快得多，按合成触发的话
+   *        嘴巴会先动完，声音才出来。
+   * @param {() => void} [opts.onSpeakEnd] 整段说完 / 被打断时触发，让角色闭嘴
    */
   constructor(opts) {
     this.opts = opts;
@@ -144,6 +150,8 @@ export class VoiceSession {
     if (!this.playing) return;
     this.aborted = true;
     this.stopQueue();
+    // 打断时嘴也要立刻停下，否则声音没了嘴还在动 —— 这个 bug 极显眼
+    this.opts.onSpeakEnd?.();
     // 麦克风已经在录了（barge-in 本来就是靠它检测的），所以直接切收音状态即可
     this.setState('recording');
     this.startLevelMonitor(true);
@@ -213,6 +221,9 @@ export class VoiceSession {
       return;
     }
 
+    // 系统嗓音：设备自带引擎，免 Key、离线，不用走云端合成
+    if (cfg.tts.provider === 'native') return this._speakNative(raw, cfg);
+
     this.setState('speaking');
     const res = await synthesizeReply(raw, cfg.tts, (done, total) => {
       this.opts.onState?.({ synth: { done, total } });
@@ -225,6 +236,57 @@ export class VoiceSession {
       return;
     }
     await this.playQueue(res.clips);
+  }
+
+  // -------------------------------------------------------------------------
+  // 系统嗓音朗读（原生端免 Key 通道）
+  // -------------------------------------------------------------------------
+  /**
+   * 逐段交给设备自带引擎念。不联网、不需要任何 Key。
+   *
+   * 为什么要自己分段再逐段念，而不是把整段一句话丢给 Speech：
+   *   整段一次念，全程只能用一个 pitch/rate，"笑着说完这句、然后正经起来"
+   *   的层次就没了。按情绪切开，每段各自带上自己的语气。
+   */
+  async _speakNative(raw, cfg) {
+    const segments = splitByEmotion(raw).filter((s) => s.text);
+    if (!segments.length) {
+      this.setState('idle');
+      return;
+    }
+
+    this.aborted = false;
+    this.setState('speaking');
+
+    const locale = cfg?.tts?.locale || 'zh-CN';
+    const speed = cfg?.tts?.speed ?? 1;
+    const voice = cfg?.tts?.voice || '';
+
+    for (const seg of segments) {
+      if (this.aborted) break;
+      try {
+        await speakNative(seg.text, {
+          locale,
+          emotion: seg.emotion,
+          speed,
+          voice,
+          // 声音真的出来的这一刻才通知 —— 和云端那条形播放的路时序保持一致，
+          // 按"开始合成"触发的话嘴巴会先动完，声音才慢半拍出来
+          onStart: () => {
+            if (this.aborted) return;
+            this.playing = true;
+            this.opts.onState?.({ speakingText: seg.text });
+            this.opts.onSpeakSegment?.(seg.text, seg.emotion ?? null);
+          },
+        });
+      } catch (_) {
+        // speakNative 只 resolve 不 reject，这里纯属双保险：单句出错不中断整段
+      }
+    }
+
+    this.playing = false;
+    this.opts.onSpeakEnd?.();
+    if (!this.aborted) this.setState('idle');
   }
 
   // -------------------------------------------------------------------------
@@ -241,6 +303,7 @@ export class VoiceSession {
         // 播放出错不中断整段，用户在等回答
       }
     }
+    this.opts.onSpeakEnd?.();
     if (!this.aborted) this.setState('idle');
   }
 
@@ -275,12 +338,18 @@ export class VoiceSession {
         this.sound = sound;
         this.playing = true;
         this.opts.onState?.({ speakingText: clip.text });
+        // 声音真正开始出来的这一刻，把口型排上 —— 这是"对上"的关键
+        this.opts.onSpeakSegment?.(clip.text, clip.emotion ?? null);
       }).catch(reject);
     });
   }
 
   stopQueue() {
     this.playing = false;
+    // 系统嗓音走的是另一套播放器（不是 expo-av 的 Sound），必须单独停。
+    // 少了这一句，用户插话时声音停不下来 —— 会一直念到自然结束才肯闭嘴。
+    // 当前没在用系统嗓音朗读时，Speech.stop() 是幂等的，直接调也不会有副作用。
+    stopNative();
     if (this.sound) {
       this.sound.stopAsync().catch(() => {});
       this.sound.unloadAsync().catch(() => {});
@@ -293,6 +362,7 @@ export class VoiceSession {
     this.aborted = true;
     this.stopQueue();
     this.stopLevelMonitor();
+    this.opts.onSpeakEnd?.();
     await this.stopRecording();
     this.setState('idle');
   }

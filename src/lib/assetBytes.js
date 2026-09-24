@@ -51,21 +51,126 @@ async function resolveUri(mod) {
   return uri;
 }
 
+// ---------------------------------------------------------------------------
+// 字节缓存（渐进式预热用）
+// ---------------------------------------------------------------------------
+// 为什么要缓存：**切换角色时的卡顿基本都来自重新读那 1MB 的 glb**。
+// 预热阶段把字节先抓进来放这儿，真切换时 readAssetBytes 直接命中，
+// 省掉一次网络往返（web）或一次 base64 解码（native，那个更慢）。
+//
+// 为什么不全部缓存：kizuna 一个就 7.4MB，15 个角色全驻留是 20MB+。
+// 所以给个上限，超了就从**最早放进去的**开始丢（简单的 FIFO，够用）。
+const cache = new Map();
+let cacheBytes = 0;
+const CACHE_BUDGET = 36 * 1024 * 1024; // 36MB
+
+export function assetCacheStats() {
+  return { items: cache.size, bytes: cacheBytes, budget: CACHE_BUDGET };
+}
+
+function putCache(uri, bytes) {
+  if (cache.has(uri)) return;
+  if (bytes.byteLength > CACHE_BUDGET) return;  // 单件就超预算，别把别人都挤掉
+  while (cacheBytes + bytes.byteLength > CACHE_BUDGET && cache.size) {
+    const oldest = cache.keys().next().value;
+    cacheBytes -= cache.get(oldest).byteLength;
+    cache.delete(oldest);
+  }
+  cache.set(uri, bytes);
+  cacheBytes += bytes.byteLength;
+}
+
+/**
+ * 判断 require() 的结果是不是"资源引用"，还是 Metro 已经 inline 成的普通对象。
+ * 判据和下面的 readAssetJSON 一致：资源模块一定带 uri / __packager_asset / width。
+ */
+export function isAssetModule(mod) {
+  return !!mod && typeof mod === 'object'
+    && !!(mod.uri || mod.__packager_asset || mod.width != null);
+}
+
 /**
  * @returns {Promise<{bytes: Uint8Array, uri: string}>}
  */
 export async function readAssetBytes(mod) {
   const uri = await resolveUri(mod);
 
+  const hit = cache.get(uri);
+  if (hit) return { bytes: hit, uri };
+
   if (Platform.OS === 'web') {
     const res = await fetch(uri);
     if (!res.ok) throw new Error(`读取资源失败 ${res.status}: ${uri}`);
     const buf = await res.arrayBuffer();
-    return { bytes: new Uint8Array(buf), uri };
+    const bytes = new Uint8Array(buf);
+    putCache(uri, bytes);
+    return { bytes, uri };
   }
 
   const b64 = await FileSystem.readAsStringAsync(uri, {
     encoding: FileSystem.EncodingType.Base64,
   });
-  return { bytes: base64ToBytes(b64), uri };
+  const bytes = base64ToBytes(b64);
+  putCache(uri, bytes);
+  return { bytes, uri };
+}
+
+/**
+ * 预热一个资源：把字节抓进缓存，**不做任何解析**。
+ *
+ * 为什么不做解析：解析 glb 是这一整条链路里最贵的一步，
+ * 预热时把它做了 = 把卡顿从"切角色那一刻"搬到"刚进主页那一刻"，没占到便宜。
+ * 而且只有当前主角那一份会被真正挂上场景，其余 14 份解析完也是白扔。
+ *
+ * @returns {Promise<{ok: boolean, cached?: boolean, bytes?: number, reason?: string}>}
+ */
+export async function warmAssetBytes(mod) {
+  if (!isAssetModule(mod)) return { ok: false, reason: 'not-an-asset（Metro 已 inline）' };
+  try {
+    const uri = await resolveUri(mod);
+    if (cache.has(uri)) return { ok: true, cached: true, bytes: 0 };
+    const before = cacheBytes;
+    await readAssetBytes(mod);
+    return { ok: true, cached: false, bytes: cacheBytes - before };
+  } catch (e) {
+    return { ok: false, reason: e?.message || String(e) };
+  }
+}
+
+/**
+ * 读一个 JSON 资源，返回**解析后的对象**。
+ *
+ * 为什么不能直接 `JSON.parse(readAssetBytes(...))`：
+ *   Metro 对 `.json` 的默认处理是**当 JS 模块 inline**，所以
+ *   `require('./x.json')` 拿到的已经是解析好的对象，不是资源引用。
+ *   这种对象喂给 `Asset.fromModule()` 会抛
+ *   `Module "[object Object]" is missing from the asset registry`。
+ *   —— 这条路在 web 上真踩过（页面能渲染，但表情静默失效）。
+ *
+ * 所以这里两条路都走：
+ *   1) 传进来的已经是对象（Metro inline 的结果）→ 直接用，零成本；
+ *   2) 是资源引用（native / 注册成 assetExts 的 `.morph.json`）→ 读字节再解析。
+ *
+ * @param {any} mod require() 的结果，可能是对象也可能是资源模块
+ * @returns {Promise<object|null>}
+ */
+export async function readAssetJSON(mod) {
+  if (!mod) return null;
+
+  // 情况 1：Metro 已经把它当模块 inline 成对象了。
+  // 判据是"不像资源模块"：资源模块一定带 uri 或 __packager_asset，
+  // 而 inline 出来的就是普通对象。这里**不按内容形状判断**
+  // （比如不许用 mod.shapes 来判断），否则别的 JSON 会被误拒。
+  const looksLikeAsset = isAssetModule(mod);
+  if (!looksLikeAsset) {
+    // 有些打包器会把 default 包一层
+    if (mod && typeof mod === 'object' && mod.default && Object.keys(mod).length === 1) {
+      return mod.default;
+    }
+    return mod;
+  }
+
+  // 情况 2：资源引用 —— 读出字节再解析
+  const { bytes } = await readAssetBytes(mod);
+  return JSON.parse(new TextDecoder().decode(bytes));
 }

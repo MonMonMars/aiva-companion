@@ -1,0 +1,92 @@
+# 推代码到 main → 自动打包 Web 版 → 发布到 GitHub Pages
+# ---------------------------------------------------------------------------
+# 首次使用：仓库 Settings → Pages → Source 选「GitHub Actions」。
+# 之后每次 git push 都会重新打包发布。
+name: Deploy Web to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 部署 Pages 必须要这三个权限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同时只允许一次部署；新的推送会顶掉正在跑的
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 装依赖
+        run: npm install --no-audit --no-fund
+
+      # Pages 把站点挂在 https://<用户名>.github.io/<仓库名>/ 下，
+      # 而 Expo 默认把资源写成绝对路径 /assets/... —— 不设 baseUrl 会整站 404。
+      # 仓库名若就叫 <用户名>.github.io，站点在根路径，此时 baseUrl 必须是 /。
+      - name: 按仓库名设置 baseUrl
+        env:
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('app.json','utf8'));const n=process.env.REPO_NAME;const base=n.endsWith('.github.io')?'/':'/'+n+'/';j.expo.experiments=Object.assign({},j.expo.experiments,{baseUrl:base});fs.writeFileSync('app.json',JSON.stringify(j,null,2));console.log('baseUrl =',base)"
+
+      - name: 导出 Web 静态包
+        run: npx expo export --platform web
+        env:
+          CI: "1"
+
+      # 红线顺序，一步都不能少（详见 README「放到 GitHub Pages」一节）：
+      #   fixhtml     → 注入启动兜底（含 iOS 捏合缩放拦截）+ 复制 server.js
+      #   buildadmin  → 补回 admin.html（expo export 会清空 dist）
+      #   precompress → 预压 .br/.gz
+      - name: 打包后处理（红线顺序）
+        run: |
+          node tools/fixhtml.mjs
+          node tools/buildadmin.mjs
+          node tools/precompress.mjs
+
+      # _expo/ 这类下划线开头的目录会被 Jekyll 吃掉，加 .nojekyll 关掉它
+      - name: 关掉 Jekyll
+        run: touch dist/.nojekyll
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+        with:
+          # ★ 首次运行时 Pages 还没开，不加这行会报
+          #   "Get Pages site failed. Error: HttpError: Not Found"
+          #   开了这个开关，这一步自己会把 Pages 启用。
+          enablement: true
+        with:
+          # ★ 让这一步自己把 Pages 打开。
+          #   不加的话，首次运行（Pages 还没在仓库里启用）会直接失败：
+          #     Get Pages site failed. Error: HttpError: Not Found
+          #   因为「开仓库」和「开 Pages」是两个独立开关，
+          #   调 API 建仓库不会顺带把 Pages 打开，尤其空仓库时 'build_type=workflow'
+          #   的启用请求会返回 409 —— 结果就是 Pages 一直关着。
+          enablement: true
+      - name: 打印网址
+        run: echo "Pages 网址 = ${{ steps.deployment.outputs.page_url }}"

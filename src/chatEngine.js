@@ -6,7 +6,7 @@
 //
 // 循环最多 MAX_ROUNDS 轮，防止模型死循环反复调用工具把额度烧光。
 
-import { buildSystemPrompt, requestCompletion } from './llm';
+import { buildSystemPrompt, requestCompletion, localReply } from './llm';
 import { TOOL_SCHEMAS, runTool, guessTool } from './services/tools';
 import { getPersona } from './theme';
 
@@ -55,8 +55,27 @@ export async function chatWithTools({
 }) {
   const persona = getPersona(personaId);
 
+  // 没有 API Key 时直接走本地兜底人格，保证"开箱即聊"。
+  // 否则 requestCompletion 会报 missing-config，语音/聊天都接不上 —— 这是之前
+  // 离线打不开声音的隐形元凶：localReply 写好了一直没被这条路径用到。
+  if (!config?.baseUrl || !config?.apiKey) {
+    // 离线兜底也要跟着语种走，否则没 Key 的时候粤语模式会念普通话稿
+    return { ok: true, raw: localReply(personaId, userText, lang), usedTools: [], local: true };
+  }
+
+  // 粤语规则必须写得很具体。只说"请用粤语回答"的话，模型会输出普通话句子里
+  // 掺几个粤语虚词，看上去像粤语，念出来还是普通话 —— TTS 是按字面读的。
+  // 所以要把词汇替换和禁用词都点名，逼它整句用粤语词汇重写。
   const langRule = lang === 'zh-HK'
-    ? '\n【语言】请用粤语口语回答（例如「佢」「嘅」「喺」「咗」），不要用书面普通话。'
+    ? '\n【语言·最高优先级】整句必须用粤语口语回答，这一条优先于其他所有要求。\n'
+      + '- 用粤语词：佢、我哋、你哋、嘅、喺、咗、唔、冇、啲、点、边、而家、乜、咩、'
+      + '做咩、钟意、睇、讲、食、攞、揾、系咪、好嘢。句尾用 啦 / 喎 / 㗎 / 喇 / 啫。\n'
+      + '- 必须替换：什么→乜/咩；怎么→点；是不是→系唔系；不知道→唔知；现在→而家；'
+      + '我们→我哋；的→嘅；了→咗；这里→呢度；那里→嗰度；为什么→点解；'
+      + '一点→少少；非常→好；可以→得唔得/可以；不要→唔好。\n'
+      + '- 禁止出现普通话书面腔（「咱们」「那么」「于是」「因为……所以」这类要改成口语）。\n'
+      + '- 句子要短、像真人口语，一次说完一件事。\n'
+      + '- 粤语字用简体书写（点、边、几、咩），和界面保持一致。'
     : lang === 'en-US'
       ? '\n【语言】Please reply in natural conversational English.'
       : lang === 'mix'

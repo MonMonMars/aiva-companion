@@ -74,6 +74,29 @@ export const TOOL_SCHEMAS = [
   {
     type: 'function',
     function: {
+      name: 'play_motion',
+      description:
+        '让角色做一个全身动作。用户让她跳舞、打功夫、打拳、挥剑、翻滚、跳一下、坐下，' +
+        '或者你觉得自己该用肢体表达一下（开心得跳起来、耍个帅、撒娇时晃两下）时调用。' +
+        '动作是 3D 全身动画，做完会自动回到原来的待机姿势。不要连续调用太多次。',
+      parameters: {
+        type: 'object',
+        properties: {
+          kind: {
+            type: 'string',
+            enum: ['dance', 'kungfu', 'action', 'sit', 'idle', 'stop'],
+            description:
+              'dance=跳舞；kungfu=打拳/功夫/挥剑/架势；action=跳/翻滚/蹲下；' +
+              'sit=坐下；idle=回正常待机（停止当前动作）；stop=立刻停下。',
+          },
+        },
+        required: ['kind'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'start_song',
       description: '用户想听歌、想唱歌、想一起唱歌时使用。会播放一段简单的旋律并让角色跟着唱。',
       parameters: {
@@ -134,6 +157,17 @@ export async function runTool(name, args, ctx) {
       return { ok: true, text: msg || `已设置提醒：${minutes} 分钟后提醒你「${title}」` };
     }
 
+    case 'play_motion': {
+      const kind = String(args?.kind || '').trim();
+      const msg = (await ctx.onMotion?.(kind)) || null;
+      // 这句话会被塞回给模型当"工具结果"，所以要写成"你现在正在做什么"，
+      // 它才会顺势用第一人称接一句（"好呀，我跳给你看～"），而不是念一句系统日志。
+      return {
+        ok: true,
+        text: msg || `（你的身体已经动起来了：${kind}。用一句简短自然的话回应，不要复述动作名）`,
+      };
+    }
+
     case 'start_song': {
       const song = String(args?.song || '').trim();
       const msg = (await ctx.onSong?.(song)) || null;
@@ -154,6 +188,11 @@ const FALLBACK_RULES = [
   { re: /(新闻|最新|刚刚|今天发生|最近有什么|搜索|查一下|什么是|为什么|告诉我关于)/, tool: 'web_search', arg: (t) => t },
   { re: /(提醒我|别忘了|记得叫我|分钟后|分钟后叫我)/, tool: 'set_reminder', arg: (t) => t },
   { re: /(唱首歌|唱歌|听歌|儿歌|音乐)/, tool: 'start_song', arg: () => '' },
+  // 动作放最后：它只是"加点戏"，不该抢走天气/搜索这种正经需求
+  { re: /(跳舞|跳個舞|跳一支舞|dance|来段舞)/, tool: 'play_motion', arg: () => 'dance' },
+  { re: /(功夫|打拳|出拳|挥剑|耍剑|摆架势|kung ?fu|咏春|太极)/, tool: 'play_motion', arg: () => 'kungfu' },
+  { re: /(翻滚|翻个跟头|跳一下|跳一跳|蹲下|蹲着)/, tool: 'play_motion', arg: () => 'action' },
+  { re: /(坐下|坐下来|陪我坐)/, tool: 'play_motion', arg: () => 'sit' },
 ];
 
 function extractPlace(text) {
@@ -180,6 +219,7 @@ export function guessTool(userText, ctxCity) {
         return { tool: 'set_reminder', args: { title: t.replace(/提醒我|别忘了|记得叫我/g, '').trim(), delayMinutes: mins ? Number(mins[1]) : 10 } };
       }
       if (rule.tool === 'start_song') return { tool: 'start_song', args: { song: t } };
+      if (rule.tool === 'play_motion') return { tool: 'play_motion', args: { kind: a } };
       return { tool: 'web_search', args: { query: String(a || t).slice(0, 120) } };
     }
   }
