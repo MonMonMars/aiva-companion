@@ -482,9 +482,18 @@ iOS 原生包要 macOS + Apple 开发者账号，Windows 上打不了。想在 i
 - **baseUrl**：Pages 挂在 `/<仓库名>/` 子路径下，而 Expo 默认把资源写成绝对路径
   `/assets/...`。不改的话整站资源 404。工作流会在打包前按仓库名把
   `expo.experiments.baseUrl` 写进 `app.json`。
+  > ⚠️ baseUrl 只管得了 Expo 自己打包的资源。**代码里手拼的 URL 它管不着** ——
+  > 曾经 `src/voice/espeak.js` 写死 `/espeakng/`，在子路径下解析到站点根目录 404，
+  > 结果离线 TTS 在 Pages 上整个失效（页面照常用，只是没声音，极难查）。
+  > 所以 `tools/fixhtml.mjs` 会把 baseUrl 再注入一次，变成运行时常量
+  > `window.__AIVA_BASE__`。**凡 JS 里自己拼路径去取资源，一律用它当前缀，别写死 `/`。**
 - **打包红线顺序**：`expo export` 会清空 `dist`，所以必须依次补
   `tools/fixhtml.mjs`（启动兜底 + iOS 捏合缩放拦截）、`tools/buildadmin.mjs`（admin.html）、
   `tools/precompress.mjs`（预压缩）。少任何一步，手机上就是白屏或后台页空白。
+  > `fixhtml.mjs` 是**幂等**的，重复跑不会叠加。它注入的两块东西都带唯一 id
+  > （`aiva-base` / `aiva-boot-safety`），删除时也认 id ——
+  > 千万别把清理正则写成「从第一个 `<script>` 匹配到含某关键字的 `</script>`」，
+  > 那种写法一旦 head 里多了脚本，就会把 `<title>` 到 `<div id="root">` 全吞掉。
 
 > ⚠️ 手工发布到其它平台时同理：部署类型要选 **Node**（跑 `node server.js`），别选纯静态 ——
 > 静态服务器不压缩，6.6MB 主包裸发给手机基本就是长时间白屏。
