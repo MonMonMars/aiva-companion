@@ -33,6 +33,12 @@ jobs:
       - name: 装依赖
         run: npm install --no-audit --no-fund
 
+      # 打包之前先把全套测试跑掉（10 步，全是本地纯计算、零网络依赖，
+      # 所以不会因为在 CI 上跑而假失败）。不合格就别打包 —— 免得把坏版本发上线。
+      # 这样本机就不用为了「跑一遍验收」而一直开着，推完代码交给云端就行。
+      - name: 跑测试（不合格就不打包）
+        run: npm test
+
       # Pages 把站点挂在 https://<用户名>.github.io/<仓库名>/ 下，
       # 而 Expo 默认把资源写成绝对路径 /assets/... —— 不设 baseUrl 会整站 404。
       # 仓库名若就叫 <用户名>.github.io，站点在根路径，此时 baseUrl 必须是 /。
@@ -73,6 +79,13 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # ⚠️ 这个 job 不会自动带上仓库文件（checkout 只在 build 里做过），
+      #    不补这两步，下面 node tools/verify-live.mjs 会直接「找不到文件」。
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - id: deployment
         uses: actions/deploy-pages@v4
         with:
@@ -85,3 +98,16 @@ jobs:
           enablement: true
       - name: 打印网址
         run: echo "Pages 网址 = ${{ steps.deployment.outputs.page_url }}"
+
+      # 发版不等于上线：中间隔着 Pages 缓存和 CDN，刚部署完立刻抓往往还是旧 bundle
+      # （实测抓到过哈希和上一版完全一样的包，于是 2 项 MISS，差点以为改动没生效）。
+      # 所以这里轮询重试，直到新包出现。
+      - name: 核查线上产物（新包是否真的上线）
+        run: |
+          for i in $(seq 1 12); do
+            node tools/verify-live.mjs && exit 0
+            echo "--- 第 $i 次未通过（新包可能还没刷到），等 45 秒再试"
+            sleep 45
+          done
+          echo "12 次都没通过：线上跑的可能还是旧包，需要人工看一眼"
+          exit 1
