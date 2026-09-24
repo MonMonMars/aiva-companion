@@ -647,6 +647,26 @@ node tools/serve-dist.mjs 8130 ./dist /aiva-companion
 第三个参数负责剥前缀。另外它对**带扩展名却找不到**的路径如实返回 404 而不是回落 index.html ——
 否则浏览器会拿到 HTML 当 JS 解析，报一个跟真因毫不相干的 `SyntaxError: Unexpected token '<'`。
 
+### 6.4 同一文件要改多处：一次只能发一个编辑调用
+
+**在一条消息里对同一个文件发多个编辑调用，只有最后一个会留下。**
+
+真实代价：给 18 个角色补 `bgId / idlePose / sample` 三个字段，分 6 批、每批 3 个调用，
+结果**每批只有第 3 个活下来** —— 18 处改动落地了 6 处，而每一次调用都回报
+「修改成功」。肉眼完全看不出来，是靠 `tools/check-persona-coverage.mjs` 数出来的。
+
+原因很直白：同一批里的调用各自拿着**同一份旧内容**去算新内容，
+后写的覆盖先写的，前面的改动直接蒸发。
+
+规避办法（任选其一）：
+
+- **串行**：一个文件一次只发一个编辑调用，改完再发下一个。
+- **写脚本**：一次性改动超过 3 处时，写成 `.mjs` 用 Node 跑（改完记得自己核验一遍）。
+
+> 顺带一条同类教训：核对脚本自己也会撒谎。第一版用 `split(/\n  {\n/)` 去切
+> `PERSONAS` 数组，角色之间的注释块把块和 id 错位了，一半角色被报成「没配字段」，
+> 而实际上配了。**验证工具写完，先拿它去验一个你已知的结论。**
+
 ---
 
 ## 七、几个已经做进去的取舍
@@ -681,8 +701,28 @@ node tools/serve-dist.mjs 8130 ./dist /aiva-companion
   `style` 目前支持 `'twin-tail'`（双马尾）· `'spike'`（短刺发）· `'glasses'`（直长发+眼镜）
 - `voice`：`pet / poke / gift / levelUp / lowMood / idle` 六组台词
 - `system`：给大模型的角色设定
+- `bgId`：她的**默认舞台**（`src/backgrounds.js` 里的 id）。只在用户还没自己挑过舞台
+  （`bgId === 'auto'`）时，点确认选人时才会带上 —— 主动选过的舞台优先级更高。
+- `idlePose`：**签名待机姿势**（`src/anim/idlePoses.js` 里的 id，必须是 `tag: 'idle'` 的）。
+  她一出场先摆这个，之后在轮换里按 18% 的概率回到它。
+- `sample`：示例对白数组，显示在选角页预览里。
 
-顺便补一份 `src/llm.js` 里 `SCRIPTS` 的兜底台词（key 用新的 persona id）。
+另外**三处**必须同时补，缺一处这个角色就会"半残"，而且不报错：
+
+| 位置 | 缺了会怎样 |
+|---|---|
+| `src/theme.js` 的 `SPEECH` | 音色掉到 `girlfriend`（软甜少女音），男角色也会用女声 |
+| `src/llm.js` 的 `SCRIPTS` | 离线台词掉到 `SCRIPTS.girlfriend`，**男角色说出可爱女友的台词** |
+| 上面三个字段 | 选角页预览缺项，`idlePose` 没有的话她就没有签名动作 |
+
+改完跑一遍核对脚本，它会把这五项逐一列出来：
+
+```bash
+node tools/check-persona-coverage.mjs
+```
+
+新增发型 `style` 时，还要去 `src/components/AvatarPreview.js` 补一档轮廓，
+否则会掉到短发默认形状上，看着像"新角色和别人撞发型了"。
 
 **3D 形象怎么处理：** 不配模型也能跑 —— `loadCompanionModel` 会返回 `no-asset`，界面上就是那个程序化角色。
 但要注意 `src/lib/companionModel.js` 里的 `PERSONA_MODELS` 用的是静态 `require`，**登记了却不存在的文件会让 Metro 直接构建失败**。

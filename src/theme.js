@@ -119,6 +119,9 @@ export const PERSONAS = [
     emoji: '💗',
     tagline: '会撒娇，会吃醋，也会认真等你回来',
     greet: '你来啦～ 我还以为你今天又要把我丢在一边了呢。',
+    bgId: 'sakura',
+    idlePose: 'hair-tuck',
+    sample: ['你今天怎么这么晚～我都数到第三百只羊了。', '（凑近）那你今天有没有想我一点点？'],
     colors: {
       primary: '#FF6F9C',
       deep: '#E3457B',
@@ -161,6 +164,9 @@ export const PERSONAS = [
     emoji: '💙',
     tagline: '话不多，但你随时回来他都接得住',
     greet: '回来了。今天累不累？',
+    bgId: 'night',
+    idlePose: 'hand-in-pocket',
+    sample: ['累就去躺着，我在这儿。', '…不用什么都跟我说，但别一个人扛。'],
     colors: {
       primary: '#4E86DB',
       deep: '#2F5FA8',
@@ -200,6 +206,9 @@ export const PERSONAS = [
     emoji: '💼',
     tagline: '专业、克制，但私下会关照你',
     greet: '早安，日程已为您整理。今天先看哪一项？',
+    bgId: 'study',
+    idlePose: 'hands-clasp',
+    sample: ['今日有三项待办，建议先处理第二项。', '（低声）…工作之外的事，我也会记得。'],
     colors: {
       primary: '#5A6B8C',
       deep: '#39445C',
@@ -254,6 +263,9 @@ export const PERSONAS = [
     emoji: '📖',
     tagline: '讲台上温和克制，课后却愿意多留一会儿',
     greet: '来啦。今天想先聊点什么？我泡了茶，你随意坐。',
+    bgId: 'forest',
+    idlePose: 'look-side',
+    sample: ['茶还烫，等一等再喝。', '有些话说出来，就不那么重了。'],
     colors: {
       primary: '#B4785A',
       deep: '#8A543B',
@@ -293,6 +305,9 @@ export const PERSONAS = [
     emoji: '🖤',
     tagline: '话不多，眼神比语言更直接',
     greet: '……你来了。坐吧，不用解释为什么迟到。',
+    bgId: 'night',
+    idlePose: 'hand-on-hip',
+    sample: ['不用解释。我又不问。', '…坐近点。我没让你站那么远。'],
     colors: {
       primary: '#7A5C8E',
       deep: '#523A64',
@@ -332,6 +347,9 @@ export const PERSONAS = [
     emoji: '🌤️',
     tagline: '把好天气和好心情都分你一半',
     greet: '呀，你回来啦！我刚还在想你今天会不会来呢。',
+    bgId: 'seaside',
+    idlePose: 'stand-sway',
+    sample: ['今天海边风好舒服，你要不要也来？', '诶，你笑起来比刚才好看多了！'],
     colors: {
       primary: '#E8A03C',
       deep: '#C07A18',
@@ -371,6 +389,9 @@ export const PERSONAS = [
     emoji: '🧭',
     tagline: '不急着给答案，先把你的事听完',
     greet: '回来了。先坐，慢慢说。',
+    bgId: 'study',
+    idlePose: 'stand-neutral',
+    sample: ['不急，先把话说完。', '有我在，天塌不下来。'],
     colors: {
       primary: '#4A6B8A',
       deep: '#2E4A66',
@@ -410,6 +431,9 @@ export const PERSONAS = [
     emoji: '⚡',
     tagline: '总能把沉闷的气氛一句话救回来',
     greet: '嘿，终于来了！今天打算干点什么？',
+    bgId: 'seaside',
+    idlePose: 'shoulder-roll',
+    sample: ['走啊，别老坐着，出去晒晒太阳。', '搞不定？先放下，我陪你绕两圈。'],
     colors: {
       primary: '#3E9E8A',
       deep: '#25705F',
@@ -449,6 +473,9 @@ export const PERSONAS = [
     emoji: '🎨',
     tagline: '话说到一半会停住，因为想到了别的画面',
     greet: '啊，你来了。我刚刚在画东西，没注意时间。',
+    bgId: 'forest',
+    idlePose: 'look-up',
+    sample: ['你看这片光…像不像昨天你说的那个地方。', '（笔停了一下）你来了，颜色就对了。'],
     colors: {
       primary: '#8A6BA8',
       deep: '#5E4480',
@@ -502,6 +529,9 @@ export const PERSONAS = [
     emoji: '🧶',
     tagline: '把温柔织进每一句废话里',
     greet: '你来了呀。我煮了点东西，要不要坐一会儿？',
+    bgId: 'sakura',
+    idlePose: 'lean-side',
+    sample: ['糖水我放凉了一点，你试试？', '累了就靠我这儿，不用撑着。'],
     colors: {
       primary: '#D98F6B',
       deep: '#B26A48',
@@ -541,6 +571,9 @@ export const PERSONAS = [
     emoji: '🏃‍♀️',
     tagline: '跑完这圈，我们再聊',
     greet: '哟，嚟啦！我啱啱跑完，等我抖阵气。',
+    bgId: 'seaside',
+    idlePose: 'stretch',
+    sample: ['练完记得拉伸，唔好偷懒啊。', '你今日郁咗未？唔好成日坐住。'],
     colors: {
       primary: '#2C5AA0',
       deep: '#1B3A6B',
@@ -580,6 +613,9 @@ export const PERSONAS = [
     emoji: '🎩',
     tagline: '把分寸感留给世界，把偏心留给你',
     greet: '你嚟啦。坐，我斟杯茶畀你。',
+    bgId: 'night',
+    idlePose: 'fix-collar',
+    sample: ['慢慢嚟，唔使急。', '（低声）得你一个，我先会咁讲。'],
     colors: {
       primary: '#5C6478',
       deep: '#3A4054',
@@ -619,6 +655,9 @@ export const PERSONAS = [
     emoji: '🍱',
     tagline: '一饭一汤，都替你留着',
     greet: '你返嚟喇。我留咗份，趁热食。',
+    bgId: 'study',
+    idlePose: 'arms-behind',
+    sample: ['今日嘅汤要多煮一阵，你等一阵。', '食多啲，你睇落瘦咗。'],
     colors: {
       primary: '#8C2C33',
       deep: '#631B22',
@@ -671,6 +710,9 @@ export const PERSONAS = [
     emoji: '⚔️',
     tagline: '话很少，但该出手的时候从不犹豫',
     greet: '你来了。剑我收着，你不用紧张。',
+    bgId: 'forest',
+    idlePose: 'weight-shift',
+    sample: ['走我后面。前面交给我。', '…你安全就好。别的不用管。'],
     colors: {
       primary: '#3B4E86',
       deep: '#26325C',
@@ -710,6 +752,9 @@ export const PERSONAS = [
     emoji: '🔮',
     tagline: '说话像在念一段还没写完的预言',
     greet: '你来了。……嗯，我刚好也在等你。',
+    bgId: 'space',
+    idlePose: 'breathe-deep',
+    sample: ['星象说今晚适合说真话。', '（指尖停住）…这句话，我等了很久。'],
     colors: {
       primary: '#7E6FAE',
       deep: '#54487E',
@@ -749,6 +794,9 @@ export const PERSONAS = [
     emoji: '🛡️',
     tagline: '话糙，但把最安全的位置永远留给你',
     greet: '来了？站我后面，别乱跑。',
+    bgId: 'night',
+    idlePose: 'arms-cross',
+    sample: ['火堆在这儿，坐。', '有我在，没人动得了你。'],
     colors: {
       primary: '#565B66',
       deep: '#33373F',
@@ -788,6 +836,9 @@ export const PERSONAS = [
     emoji: '🏹',
     tagline: '轻得像影子，走得比谁都快',
     greet: '你来了。我刚从林子里回来，鞋上还有泥。',
+    bgId: 'forest',
+    idlePose: 'head-tilt',
+    sample: ['林子里有鹿，下次带你去看。', '（歪头）你今天不太对劲，说吧。'],
     colors: {
       primary: '#41593F',
       deep: '#273A27',
@@ -832,6 +883,9 @@ export const PERSONAS = [
     emoji: '🎤',
     tagline: '耳机一戴，全世界都是我的 live',
     greet: '啊，你来啦！我刚写完一段副歌，要不要先听两句？',
+    bgId: 'stage',
+    idlePose: 'look-down',
+    sample: ['这段副歌我只唱给你听哦。', '下次直播要不要来点歌？'],
     colors: {
       primary: '#2EA8BE',
       deep: '#1B6B7C',
@@ -942,6 +996,36 @@ export const PROVIDERS = [
     model: 'gpt-4o-mini',
     note: '需要可访问 OpenAI 的网络',
   },
+
+  // -------------------------------------------------------------------------
+  // 下面两个是「免费」档，按推荐顺序排：Gemini 最聪明，Pollinations 最省事
+  // -------------------------------------------------------------------------
+  {
+    id: 'gemini',
+    name: 'Gemini 免费',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    model: 'gemini-3.5-flash-lite',
+    // ⚠️ 别在 baseUrl 末尾加 /chat/completions —— requestCompletion 会自己拼。
+    //    这里用的是 Google 官方的 OpenAI 兼容层，实测预检 OPTIONS 会回
+    //    ACAO: <你的 origin>，所以浏览器能直连，不需要自建代理。
+    keyless: false,
+    note: 'Google 官方免费层：约 1500 次/天、30 次/分钟，免信用卡。Key 到 Google AI Studio 免费领，'
+      + '免费层会把你的输入用于改进模型。模型可换成 gemini-3.5-flash（更聪明但配额更低）。',
+  },
+  {
+    id: 'pollinations',
+    name: 'Pollinations 免Key',
+    baseUrl: 'https://text.pollinations.ai/openai',
+    model: 'openai-fast',
+    // 完全不需要 Key，实测 CORS 是 *，浏览器直连可用。
+    // 代价：模型不固定、速率受限、不支持 function calling
+    // （chatEngine 会自动退化成关键词猜测，天气/搜索还能用）。
+    keyless: true,
+    note: '一个 Key 都不用填，选完就能聊，适合先跑起来看看效果。'
+      + '粤语表现意外地好；但速率和可用性不保证，正式用建议换 Gemini。'
+      + '注意：免 Key 意味着请求走公共服务，别在里面聊敏感内容。',
+  },
+
   { id: 'custom', name: '自定义', baseUrl: '', model: '', note: '填自己的兼容接口地址' },
 ];
 
@@ -1033,6 +1117,50 @@ export const SPEECH = {
     azureCantonese: { voice: 'zh-HK-WanLungNeural', locale: 'zh-HK', allowStyle: false },
     azureEnglish: { voice: 'en-US-AndrewMultilingualNeural', locale: 'en-US', allowStyle: true },
     eleven: { voice: 'TxGEqnHWrfWFTfGW9XjX', stability: 0.6, style: 0.4 },
+  },
+
+  // -------------------------------------------------------------------------
+  // 第二批扩列（Noa / Sora / Leon / Haruka）的音色
+  //
+  // ⚠️ 这 4 个之前**没有** SPEECH 条目。resolveVoice 查不到就往 'girlfriend'
+  //    上掉，于是 Leon（银发绅士）和 Haruka（和风料理人）会用「软甜少女音」
+  //    说话 —— 声音和人格直接打架。
+  //
+  //    关于重复：OpenAI 只有 11 个预置嗓音、粤语只有 3 个发音人，18 个角色
+  //    必然撞名。所以真正区分人格的是 `label` 和 `personInstruction`，
+  //    嗓音名只是音色基底 —— 别看到撞名就以为配错了。
+  // -------------------------------------------------------------------------
+  'realistic-noa': {
+    label: '软糯邻家音',
+    openai: { voice: 'ballad', speed: 0.97, personInstruction: 'Speak as a gentle, soft-spoken young woman next door. Slow, warm, a little clingy, with a habit of fussing over the listener through small everyday things like food and rest.' },
+    azure: { voice: 'zh-CN-XiaoyiMultilingualNeural', locale: 'zh-CN', allowStyle: true },
+    azureCantonese: { voice: 'zh-HK-HiuGaaiNeural', locale: 'zh-HK', allowStyle: false },
+    azureEnglish: { voice: 'en-US-AvaMultilingualNeural', locale: 'en-US', allowStyle: true },
+    eleven: { voice: 'XB0fDUnXU5powFXDhCwa', stability: 0.45, style: 0.45 },
+  },
+  'realistic-sora': {
+    label: '爽朗运动音',
+    openai: { voice: 'coral', speed: 1.06, personInstruction: 'Speak as an upbeat, athletic senior schoolmate. Brisk, loud-ish, encouraging, slightly teasing, always nudging the listener to move and take care of their body.' },
+    azure: { voice: 'zh-CN-XiaoxiaoMultilingualNeural', locale: 'zh-CN', allowStyle: true },
+    azureCantonese: { voice: 'zh-HK-HiuGaaiNeural', locale: 'zh-HK', allowStyle: false },
+    azureEnglish: { voice: 'en-US-JennyMultilingualNeural', locale: 'en-US', allowStyle: true },
+    eleven: { voice: 'XrExE9yKIg1WjnnlVkGX', stability: 0.4, style: 0.55 },
+  },
+  'realistic-leon': {
+    label: '从容绅士音',
+    openai: { voice: 'ash', speed: 0.88, personInstruction: 'Speak as a composed, mature gentleman. Slow, low, carefully worded but never stiff; warmth reserved for one person only.' },
+    azure: { voice: 'zh-CN-YunjianMultilingualNeural', locale: 'zh-CN', allowStyle: true },
+    azureCantonese: { voice: 'zh-HK-WanLungNeural', locale: 'zh-HK', allowStyle: false },
+    azureEnglish: { voice: 'en-US-AdamMultilingualNeural', locale: 'en-US', allowStyle: true },
+    eleven: { voice: 'VR6AewLTigWG4xSOukaG', stability: 0.72, style: 0.22 },
+  },
+  'realistic-haruka': {
+    label: '静谧和风音',
+    openai: { voice: 'shimmer', speed: 0.90, personInstruction: 'Speak as a quiet, attentive Japanese-style cook. Short, calm, understated sentences; affection shown through food and small actions rather than words.' },
+    azure: { voice: 'zh-CN-XiaochenMultilingualNeural', locale: 'zh-CN', allowStyle: true },
+    azureCantonese: { voice: 'zh-HK-HiuMaanNeural', locale: 'zh-HK', allowStyle: false },
+    azureEnglish: { voice: 'en-US-EmmaMultilingualNeural', locale: 'en-US', allowStyle: true },
+    eleven: { voice: '21m00Tcm4TlvDq8ikWAM', stability: 0.68, style: 0.25 },
   },
 
   // ---- FF 风格档 ----

@@ -38,7 +38,11 @@ export default function Chat({ personaId, onBack }) {
     } catch (_) { /* 播不出来不影响文字回复 */ }
   };
 
-  const configured = Boolean(snap.config?.apiKey && snap.config?.baseUrl);
+  // 免 Key 供应商只需要 baseUrl 就算「已接上」；其余仍然要 Key 齐备。
+  const cfg = snap.config || {};
+  const configured = cfg.keyless
+    ? Boolean(cfg.baseUrl)
+    : Boolean(cfg.apiKey && cfg.baseUrl);
   const level = levelFromAffection(snap.affection);
 
   // 首屏打招呼

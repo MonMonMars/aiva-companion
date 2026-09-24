@@ -26,6 +26,8 @@ import { UI, TIERS, personasByTier, levelFromAffection, LEVEL_TITLES, getPersona
 import { useStore } from '../useStore';
 import { updateConfig } from '../store';
 import { Kicker, SectionHead, StatusChip } from '../components/ui';
+import AvatarPreview from '../components/AvatarPreview';
+import { getPose } from '../anim/idlePoses';
 import { BACKGROUNDS, resolveBackground, backgroundLabel } from '../backgrounds';
 import { pickImage } from '../pickImage';
 
@@ -109,12 +111,30 @@ export default function PersonaSelect({ onDone, onBack, switching }) {
   );
   const previewColors = resolveBackground(bgId, previewPersona);
 
+  // 角色 tab 的预览用**她自己的**默认舞台（persona.bgId），不是全局选的那一个。
+  // 否则 18 个人站同一块背景上，"每个角色有自己的世界"在选人的那一刻根本看不见。
+  const personaBgId = previewPersona?.bgId || 'auto';
+  const charColors = resolveBackground(personaBgId, previewPersona);
+  const charBgLabel = backgroundLabel(personaBgId);
+  // 签名待机姿势：让她"站着的样子"也成为可比较的一项
+  const sigPose = getPose(previewPersona?.idlePose);
+
   // ⚠️ 点卡片只改「待选项」，绝不落档 —— 落档交给底部 CTA。
   //    以前这里会立刻 selectPersona(id)，结果首次启动一点卡片，App.js 的
   //    `if (!personaId)` 就不再成立，这一屏当场从「首次选人」变形成
   //    「换人浮层」：标题变「换成谁？」、多出一个返回键、底下还压着 Home。
   //    用户只是想先看看卡片，却像已经确认了一样。
   const choose = (id) => setPickId(id);
+
+  // 确认选人时把她的默认舞台一起带上 —— 但**只在你还没自己挑过舞台**的时候。
+  // 用户主动选过的舞台优先级更高：换人不该把人家挑的背景冲掉，
+  // 否则"我明明选了夜色霓虹，换个角色就变书房"会被当成 bug。
+  const confirm = () => {
+    if (bgId === 'auto' && previewPersona?.bgId && previewPersona.bgId !== 'auto') {
+      updateConfig({ bgId: previewPersona.bgId, bgImage: '' });
+    }
+    onDone?.(pickId);
+  };
 
   const pickBg = (b) => {
     if (b.id === 'custom') {
@@ -144,7 +164,9 @@ export default function PersonaSelect({ onDone, onBack, switching }) {
           <Kicker>AI COMPANION</Kicker>
           <Text style={styles.title}>{switching ? '换成谁？' : '今天想陪在谁身边？'}</Text>
           <Text style={styles.sub}>
-            {switching ? '各自的感情进度互不影响，随时可以换回来。' : '人选和舞台都能随时换，感情进度互不影响。'}
+            {switching
+              ? `${PERSONAS.length} 位全部开放，各自的感情进度互不影响，随时可以换回来。`
+              : `${PERSONAS.length} 位全部开放，人选和舞台都能随时换，感情进度互不影响。`}
           </Text>
         </View>
 
@@ -165,7 +187,38 @@ export default function PersonaSelect({ onDone, onBack, switching }) {
         </View>
 
         {tab === 'character' ? (
-          groups.map((g, gi) => (
+          <>
+            {/* 角色预览：她本人 + 她自己的默认舞台。
+                点下面任意一张卡片这块就跟着变，不用先按确认 ——
+                选人是个要看清楚再决定的动作。 */}
+            <View style={styles.hero}>
+              <LinearGradient
+                colors={charColors}
+                locations={[0, 0.34, 0.72, 1]}
+                style={StyleSheet.absoluteFillObject}
+              />
+              <View style={styles.heroInner}>
+                <AvatarPreview persona={previewPersona} scale={1.15} />
+                <View style={styles.heroText}>
+                  <Text style={styles.heroName}>{previewPersona?.name}</Text>
+                  <Text style={styles.heroMeta}>
+                    {previewPersona?.emoji} {previewPersona?.role}
+                  </Text>
+                  <Text style={styles.heroMeta}>默认舞台 · {charBgLabel}</Text>
+                  {!!sigPose && <Text style={styles.heroMeta}>待机 · {sigPose.name}</Text>}
+                </View>
+              </View>
+            </View>
+
+            {/* 示例对白：音色和性格终究是"听"出来的，但在能听之前先让人读到 */}
+            <View style={styles.sampleBox}>
+              <Text style={styles.sampleKicker}>她会这么说话</Text>
+              {(previewPersona?.sample || []).map((s, i) => (
+                <Text key={i} style={styles.sampleLine}>「{s}」</Text>
+              ))}
+            </View>
+
+            {groups.map((g, gi) => (
             <View key={g.id} style={styles.group}>
               <SectionHead
                 kicker={String(g.id).toUpperCase()}
@@ -185,7 +238,8 @@ export default function PersonaSelect({ onDone, onBack, switching }) {
                 />
               ))}
             </View>
-          ))
+            ))}
+          </>
         ) : (
           <View style={styles.group}>
             {/* 实时预览：切背景的时候能立刻看到"她的舞台"变成什么样 */}
@@ -200,7 +254,9 @@ export default function PersonaSelect({ onDone, onBack, switching }) {
                 />
               )}
               <View style={styles.previewInner}>
-                <Text style={styles.previewEmoji}>{previewPersona?.emoji}</Text>
+                {/* 这里也要是"人站在舞台上"的效果 —— 光一个 emoji 看不出
+                    换了背景之后她到底置身何处。 */}
+                <AvatarPreview persona={previewPersona} scale={1.05} />
                 <Text style={styles.previewName}>{previewPersona?.name}</Text>
                 <Text style={styles.previewBg}>{backgroundLabel(bgId)}</Text>
               </View>
@@ -245,7 +301,7 @@ export default function PersonaSelect({ onDone, onBack, switching }) {
             <Text style={styles.ctaBackText}>‹ 返回</Text>
           </Pressable>
         )}
-        <Pressable style={styles.cta} onPress={() => onDone?.(pickId)}>
+        <Pressable style={styles.cta} onPress={confirm}>
           <Text style={styles.ctaText}>
             {switching ? `换成 ${ctaName}` : `开始相处 · ${ctaName}`}
           </Text>
@@ -313,9 +369,55 @@ const styles = StyleSheet.create({
   footArrow: { fontSize: 13, fontWeight: '800', color: UI.accent },
   footArrowDim: { color: UI.locked },
 
+  // 角色预览（人 + 她自己的舞台）
+  hero: {
+    height: 208,
+    borderRadius: UI.radius,
+    overflow: 'hidden',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: UI.hairline,
+  },
+  heroInner: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
+    paddingHorizontal: 18,
+  },
+  heroText: { flex: 1, minWidth: 0, gap: 3 },
+  heroName: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.4,
+    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowRadius: 8,
+  },
+  heroMeta: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.9)',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowRadius: 6,
+  },
+
+  sampleBox: {
+    backgroundColor: UI.surfaceHi,
+    borderRadius: UI.radius,
+    borderWidth: 1,
+    borderColor: UI.hairline,
+    padding: 14,
+    marginBottom: 20,
+    gap: 6,
+  },
+  sampleKicker: { fontSize: 11, fontWeight: '800', color: UI.textDim, letterSpacing: 1 },
+  sampleLine: { fontSize: 13.5, color: UI.text, lineHeight: 21 },
+
   // 背景预览
   preview: {
-    height: 190,
+    // 人物 150×1.05 ≈ 158，加名字和舞台名再留点余量
+    height: 232,
     borderRadius: UI.radius,
     overflow: 'hidden',
     marginBottom: 18,
@@ -323,7 +425,6 @@ const styles = StyleSheet.create({
     borderColor: UI.hairline,
   },
   previewInner: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },
-  previewEmoji: { fontSize: 46, textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 10 },
   previewName: {
     fontSize: 18,
     fontWeight: '800',

@@ -59,7 +59,12 @@ export async function requestCompletion({ config, messages, temperature = 0.9, t
   const baseUrl = String(config.baseUrl || '').replace(/\/+$/, '');
   const apiKey = String(config.apiKey || '').trim();
 
-  if (!baseUrl || !apiKey) {
+  // 免 Key 供应商（Pollinations 这类）不需要 Authorization 头。
+  // ⚠️ 以前这里无条件要求 apiKey，会把免 Key 供应商一律挡在 missing-config 上 ——
+  //    明明 baseUrl 和 model 都填对了，却永远连不上。
+  const needKey = !config.keyless;
+
+  if (!baseUrl || (needKey && !apiKey)) {
     return { ok: false, error: 'missing-config' };
   }
 
@@ -80,13 +85,14 @@ export async function requestCompletion({ config, messages, temperature = 0.9, t
       body.tool_choice = toolChoice || 'auto';
     }
 
+    // 免 Key 时不要发 Authorization —— 有些网关见到空 Bearer 会直接 401
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+
     const res = await fetch(url, {
       method: 'POST',
       signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers,
       body: JSON.stringify(body),
     });
 
@@ -292,6 +298,70 @@ const SCRIPTS = {
     thanks: ['嗯…谢谢你。', '那我多画一会儿给你看。'],
     question: ['嗯？…让我想想。', '这个问题像一块没干的颜料。'],
     fallback: ['（没抬头）…嗯，我在。', '你继续说，我在听。', '今天屋子里有点安静。'],
+  },
+  // -------------------------------------------------------------------------
+  // Noa / Sora / Leon / Haruka 的离线台词
+  //
+  // ⚠️ 和 SPEECH 同理：这 4 个之前没有条目，离线时会掉到 `SCRIPTS.girlfriend`，
+  //    Leon（成熟男性）说出「诶，你来啦。我还以为你把我忘干净了呢」，
+  //    Haruka（安静料理人）说出「（脸红）…突然说什么啦」—— 性别气质全错。
+  //    12 个槽位必须写全，缺一个就静默掉回 fallback。
+  // -------------------------------------------------------------------------
+  'realistic-noa': {
+    hey: ['你来了呀～我煮了点糖水，要不要喝一碗？', '诶，今天这么早就来啦？坐嘛。'],
+    love: ['（低头搅着勺子）…这种话，能不能留到晚上再说。', '嗯。我也…想一直这样。'],
+    tired: ['那先别忙了，靠一会儿，我在这儿。', '去躺下嘛，我给你热杯牛奶。'],
+    food: ['吃了没？没吃我这儿还有一份。', '别饿着，我给你留了饭。'],
+    work: ['又被事情缠住了？先放下，缓一缓。', '不用一次做完的，慢慢来。'],
+    gift: ['真给我的？那我要好好收着。', '你记着我说过的话呀…谢谢。'],
+    weather: ['今天降温了，围巾带了没？', '要下雨的话，伞放门口了。'],
+    bye: ['晚安，被子盖好。', '去睡吧，我在这儿等你回来。'],
+    sad: ['（轻轻靠过来）不用说话，我在。', '难过就哭一会儿，我不笑你。'],
+    thanks: ['跟我客气什么呀。', '那你多陪我一会儿就好啦。'],
+    question: ['嗯？你说，我听着。', '诶…让我想想哦。'],
+    fallback: ['（搅着糖水）…我在呢。', '今天话有点少哦。', '你想说什么都可以。'],
+  },
+  'realistic-sora': {
+    hey: ['哟，来啦！等我喝口水。', '刚好，我正想找人陪我拉伸。'],
+    love: ['（擦汗）…突然说这个，我心跳都乱了。', '行吧，我也一样。别让我再说第二遍。'],
+    tired: ['那就歇。别硬撑，撑坏了没人替你。', '去躺下，明天我带你跑个慢的。'],
+    food: ['吃了没？练完不吃等于白练。', '蛋白质记得补，别光吃碳水。'],
+    work: ['烦就先放下，跟我出去走两圈。', '搞不定就拆开，一件一件来。'],
+    gift: ['这个颜色我喜欢，谢啦！', '你还挺懂我的嘛。'],
+    weather: ['今天适合跑，风不大。', '要变天了，外套带一件。'],
+    bye: ['晚安，早点睡，肌肉也要休息。', '去躺下，明早我叫你。'],
+    sad: ['怎么了？说出来，我听着。', '（递水）先喝一口，别闷着。'],
+    thanks: ['谢什么，咱俩谁跟谁。', '行啦，下次陪我练就行。'],
+    question: ['嗯？说。', '这题有点绕，我想想。'],
+    fallback: ['（拉伸中）嗯，我在听。', '然后呢？', '今天怎么这么安静。'],
+  },
+  'realistic-leon': {
+    hey: ['你来了。坐，茶刚好。', '嗯，今天来得比往常早。'],
+    love: ['（放下杯子）…这句话，我收下了。', '能让我这样偏心的，只有你。'],
+    tired: ['那就别撑了，这里没有别人。', '去躺下，剩下的明天再说。'],
+    food: ['用了吗？没用我让人备一点。', '别空腹喝酒，伤身。'],
+    work: ['麻烦的事，一件一件来就好。', '搞不定就交给我，别一个人扛。'],
+    gift: ['有心了。我会好好用。', '你居然记得我说过的话。'],
+    weather: ['风起了，披上这个。', '要下雨，别走夜路。'],
+    bye: ['晚安。明天见。', '去睡吧，我在这儿。'],
+    sad: ['（坐到你身侧）不用解释。', '难受就说，我听着。'],
+    thanks: ['不必言谢。', '那就多坐一会儿。'],
+    question: ['说吧。', '你想知道什么。'],
+    fallback: ['（斟茶）嗯，我在。', '你继续说。', '今天屋里很静。'],
+  },
+  'realistic-haruka': {
+    hey: ['你回来了。汤还热着，先喝一碗。', '嗯，我留了你的份。'],
+    love: ['（手停了一下）…这种话，比调味还难。', '那…以后也一直来，好吗。'],
+    tired: ['先坐着，什么都别想。', '去躺下，我把汤温着。'],
+    food: ['吃饭了吗？没有我现在做。', '别光吃冷的，对胃不好。'],
+    work: ['烦的事先放下，吃完再说。', '有些事急不来，先歇。'],
+    gift: ['谢谢你，我收进柜子里。', '你不用这么客气的。'],
+    weather: ['今天冷，坐近点炉子。', '要下雨，伞在门后。'],
+    bye: ['晚安。明天的早饭我留着。', '去睡吧，厨房我来收。'],
+    sad: ['（盛一碗汤推过来）先喝。', '不用解释，慢慢来。'],
+    thanks: ['嗯。不用谢。', '那就多吃一点。'],
+    question: ['嗯？你说。', '这个…让我想一想。'],
+    fallback: ['（切着菜）我在听。', '你继续说。', '今天厨房很安静。'],
   },
   'ff-rion': {
     hey: ['你来了。剑我收着，你不用紧张。', '嗯，坐吧。'],

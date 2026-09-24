@@ -58,7 +58,10 @@ export async function chatWithTools({
   // 没有 API Key 时直接走本地兜底人格，保证"开箱即聊"。
   // 否则 requestCompletion 会报 missing-config，语音/聊天都接不上 —— 这是之前
   // 离线打不开声音的隐形元凶：localReply 写好了一直没被这条路径用到。
-  if (!config?.baseUrl || !config?.apiKey) {
+  //
+  // ⚠️ 免 Key 供应商（config.keyless，如 Pollinations）**没有 Key 也要走真模型**，
+  //    不能掉进本地兜底 —— 否则选了它却永远在念离线台词，看着像"接上了其实没接上"。
+  if (!config?.baseUrl || (!config?.keyless && !config?.apiKey)) {
     // 离线兜底也要跟着语种走，否则没 Key 的时候粤语模式会念普通话稿
     return { ok: true, raw: localReply(personaId, userText, lang), usedTools: [], local: true };
   }

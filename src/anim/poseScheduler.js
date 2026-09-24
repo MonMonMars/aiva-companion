@@ -13,10 +13,17 @@ import { getPose, posesByTag } from './idlePoses';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
+// 轮换时回到签名姿势的概率。
+// 定这个数是在打两件事的平衡：太小的话站十分钟也见不到那个"就是她"的动作，
+// 签名等于没配；太大的话她会不停做同一个动作，反而比完全随机更像循环播放。
+// idle 池 18 个，0.18 意味着签名出现的频率约为其它单个姿势的 3.7 倍。
+const SIGNATURE_CHANCE = 0.18;
+
 /**
  * @param {object|null} rig createRigDriver 的返回值
  * @param {object} [opts]
  * @param {number} [opts.fade] 换姿势的淡入时长（秒）
+ * @param {string} [opts.signature] 签名姿势 id（角色一出场先摆这个）
  * @param {(pose:object) => void} [opts.onPose] 每次换姿势的回调（用来同步表情）
  */
 export function createPoseScheduler(rig, opts = {}) {
@@ -28,6 +35,8 @@ export function createPoseScheduler(rig, opts = {}) {
   let hold = 0;             // 还要停多久
   let lastId = null;        // 上一个姿势，用来避免连着播同一个
   let reactId = null;       // 正在抢占播放的反应姿势
+  let signatureId = opts.signature || null;
+  let sigPlayed = false;    // 这一轮 idle 有没有已经摆过签名
 
   const active = () => !!rig;
 
@@ -35,6 +44,16 @@ export function createPoseScheduler(rig, opts = {}) {
   function pick() {
     const all = posesByTag(state);
     if (!all.length) return null;
+
+    // 签名姿势：第一次进 idle 无条件先摆它 —— 这是"她一出场就是这个姿势"，
+    // 也是用户认人的第一眼。之后只在轮换里按概率回来，
+    // 而且刚摆过就不重复，免得连续两次都是同一个动作。
+    const sig = signatureId ? all.find((p) => p.id === signatureId) : null;
+    if (sig) {
+      if (!sigPlayed) { sigPlayed = true; return sig; }
+      if (sig.id !== lastId && Math.random() < SIGNATURE_CHANCE) return sig;
+    }
+
     const fresh = all.filter((p) => p.id !== lastId);
     const pool = fresh.length ? fresh : all;
     return pool[Math.floor(Math.random() * pool.length)];
@@ -114,12 +133,23 @@ export function createPoseScheduler(rig, opts = {}) {
     /** 当前姿势 id（调试 / 打日志用） */
     current: () => cur?.id ?? null,
     state: () => state,
+    /**
+     * 换签名姿势（换角色时跟着换）。
+     * 传了就重新摆一次 —— 不然换人之后她还保持着上一个人的签名动作。
+     */
+    setSignature(id) {
+      signatureId = id || null;
+      sigPlayed = false;
+      if (active() && !reactId && state === 'idle') apply(pick(), fade * 0.8);
+    },
+    signature: () => signatureId,
     /** 换 rig 之后重新绑定（切换角色时） */
     rebind(nextRig) {
       rig = nextRig;
       cur = null;
       lastId = null;
       reactId = null;
+      sigPlayed = false;
     },
   };
 }

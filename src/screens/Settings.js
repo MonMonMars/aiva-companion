@@ -13,6 +13,8 @@ import { requestCompletion } from '../llm';
 export default function Settings({ personaId, onBack, onSwitchPersona, onVoice }) {
   const snap = useStore();
   const cfg = snap.config || {};
+  // 当前选中供应商的说明（免费档的注意事项都写在 note 里，得让用户看得见）
+  const activeProvider = PROVIDERS.find((p) => p.id === (cfg.provider || 'deepseek'));
   const [baseUrl, setBaseUrl] = useState(cfg.baseUrl || '');
   const [model, setModel] = useState(cfg.model || '');
   const [apiKey, setApiKey] = useState(cfg.apiKey || '');
@@ -26,13 +28,27 @@ export default function Settings({ personaId, onBack, onSwitchPersona, onVoice }
   const pickProvider = (p) => {
     setBaseUrl(p.baseUrl);
     setModel(p.model);
-    S.updateConfig({ provider: p.id, baseUrl: p.baseUrl, model: p.model });
+    // ⚠️ 切到免 Key 供应商时必须把 apiKey 清空：留着上一个供应商的 Key，
+    //    它会被当成 Bearer 头发给一个完全不相干的域名 —— 白白泄漏。
+    if (p.keyless) setApiKey('');
+    S.updateConfig({
+      provider: p.id,
+      baseUrl: p.baseUrl,
+      model: p.model,
+      keyless: !!p.keyless,
+      ...(p.keyless ? { apiKey: '' } : null),
+    });
   };
 
   const test = async () => {
     setTesting(true);
     const r = await requestCompletion({
-      config: { baseUrl: baseUrl.trim(), model: model.trim(), apiKey: apiKey.trim() },
+      config: {
+        baseUrl: baseUrl.trim(),
+        model: model.trim(),
+        apiKey: apiKey.trim(),
+        keyless: Boolean((snap.config || {}).keyless),
+      },
       messages: [
         { role: 'system', content: '你是测试助手。' },
         { role: 'user', content: '只回复两个字：正常' },
@@ -57,7 +73,8 @@ export default function Settings({ personaId, onBack, onSwitchPersona, onVoice }
       <GlassCard>
         <Text style={styles.sectionTitle}>大模型接口</Text>
         <Text style={styles.sectionNote}>
-          全部走 OpenAI 兼容格式。选一个供应商，填好 Key 就能用真模型对话。
+          全部走 OpenAI 兼容格式。想先免费试：选「Pollinations 免Key」一个 Key 都不用填；
+          想要更聪明又稳定：选「Gemini 免费」，去 Google AI Studio 免费领一个 Key（免信用卡）。
         </Text>
 
         <View style={styles.providerRow}>
@@ -75,9 +92,19 @@ export default function Settings({ personaId, onBack, onSwitchPersona, onVoice }
           })}
         </View>
 
+        {activeProvider?.note ? (
+          <Text style={styles.providerNote}>{activeProvider.note}</Text>
+        ) : null}
+
         <Field label="Base URL" value={baseUrl} onChange={setBaseUrl} placeholder="https://api.deepseek.com/v1" />
         <Field label="模型名" value={model} onChange={setModel} placeholder="deepseek-chat" />
-        <Field label="API Key" value={apiKey} onChange={setApiKey} placeholder="sk-..." secure />
+        <Field
+          label={cfg.keyless ? 'API Key（本供应商免 Key，留空即可）' : 'API Key'}
+          value={apiKey}
+          onChange={setApiKey}
+          placeholder={cfg.keyless ? '不用填' : 'sk-...'}
+          secure
+        />
 
         <View style={styles.rowBtns}>
           <PrimaryButton title={testing ? '测试中…' : '测试连接'} icon="🔌" color="#5A6B8C" onPress={test} compact />
@@ -190,6 +217,15 @@ const styles = StyleSheet.create({
   providerActive: { backgroundColor: UI.accent },
   providerText: { fontSize: 12.5, fontWeight: '700', color: UI.textDim },
   providerTextActive: { color: '#fff' },
+  providerNote: {
+    fontSize: 11.5,
+    color: UI.textDim,
+    lineHeight: 17,
+    marginBottom: 12,
+    paddingLeft: 8,
+    borderLeftWidth: 2,
+    borderLeftColor: UI.accent,
+  },
 
   field: { marginBottom: 12 },
   fieldLabel: { fontSize: 12, fontWeight: '700', color: UI.textDim, marginBottom: 6 },

@@ -690,7 +690,11 @@ export function createCompanionScene(persona) {
   // 待机姿势调度器。没 rig 的时候是空转的空壳，调用方不用判断。
   // 换姿势时同步把表情也带上（姿势库里写了 face 的才有）——
   // 没写 face 的姿势传 null，表情会过渡回中立，不会一直挂着上一个姿势的笑脸。
+  // signature 是这个角色的签名待机姿势（theme.js 的 persona.idlePose）。
+  // 她一出场先摆这个，之后在轮换里按概率回来 —— 这样 18 个角色站着的时候
+  // 才各自有辨识度，而不是所有人都在同一套随机循环里晃。
   let poseSched = createPoseScheduler(null, {
+    signature: persona?.idlePose || null,
     onPose: (p) => setFaceEmotion(p?.face || null),
   });
   // 动作片段播放器（跳舞 / 功夫 / 挥手…）。库是**按需动态加载**的 ——
@@ -1234,6 +1238,9 @@ export function createCompanionScene(persona) {
     },
     setPoseState, playPose, isReacting: () => poseSched.isReacting(),
     currentPose: () => poseSched.current(),
+    /** 换角色后更新签名姿势（不重建场景时用它） */
+    setSignaturePose: (id) => poseSched.setSignature(id),
+    signaturePose: () => poseSched.signature(),
     // 动作片段：跳舞 / 功夫 / 打拳 / 挥剑…
     preloadMotion, playMotion, stopMotion,
     motionReady: () => motionPlayer.ready(),
