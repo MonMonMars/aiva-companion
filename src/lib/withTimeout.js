@@ -26,13 +26,18 @@
  * @param {unknown} source 要限时等待的东西（真 Promise 或只有 then 的 thenable 都行）
  * @param {number} ms 等待上限
  * @param {string} message 超时时 reject 的 Error 文案
+ * @param {() => void} [onTimeout] 到点时的回调，用来顺手取消那个已经没人等的请求
+ *                                 （比如 AbortController.abort）。它抛错也不会影响超时本身。
  * @returns {Promise<unknown>} 超时则以 message 拒绝
  */
-export function withTimeout(source, ms, message = 'timeout') {
+export function withTimeout(source, ms, message = 'timeout', onTimeout) {
   let timer;
 
   const guard = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(message)), ms);
+    timer = setTimeout(() => {
+      try { onTimeout && onTimeout(); } catch (_) {}
+      reject(new Error(message));
+    }, ms);
   });
   // ① 先给 guard 挂个空 handler：无论后面任何一步同步抛错，它都不会无人接
   guard.catch(() => {});

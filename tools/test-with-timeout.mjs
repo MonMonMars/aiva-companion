@@ -127,6 +127,38 @@ console.log('─'.repeat(60));
   ok('快路径不会拖出额外等待', Date.now() - t < 400, Date.now() - t + 'ms');
 }
 
+// 6) onTimeout 回调：到点要触发（用来 abort 那个已经没人等的请求）
+{
+  unhandled = [];
+  let fired = 0;
+  try {
+    await withTimeout(new Promise(() => {}), 150, 'settings-timeout', () => { fired++; });
+  } catch (e) { /* 预期超时 */ }
+  ok('超时时 onTimeout 会触发一次', fired === 1, 'fired=' + fired);
+  await sleep(400);
+  ok('带 onTimeout 也没有 unhandled rejection', unhandled.length === 0, JSON.stringify(unhandled));
+}
+
+// 7) 快路径不该触发 onTimeout
+{
+  let fired = 0;
+  await withTimeout(Promise.resolve(1), 150, 'settings-timeout', () => { fired++; });
+  await sleep(300);
+  ok('快路径不会触发 onTimeout', fired === 0, 'fired=' + fired);
+}
+
+// 8) onTimeout 自己抛错也不能把超时吞掉
+{
+  unhandled = [];
+  let msg = null;
+  try {
+    await withTimeout(new Promise(() => {}), 150, 'settings-timeout', () => { throw new Error('abort 炸了'); });
+  } catch (e) { msg = e.message; }
+  ok('onTimeout 抛错不影响超时结果', msg === 'settings-timeout', String(msg));
+  await sleep(400);
+  ok('onTimeout 抛错也不会变成 unhandled', unhandled.length === 0, JSON.stringify(unhandled));
+}
+
 // ── 自检：当初那个错误写法，必须被上面第 3 条抓出来 ──────────────────────
 // 如果这一节变成「没抓到」，说明测试用例本身失效了，得回头改测试而不是改产品代码。
 console.log('─'.repeat(60));

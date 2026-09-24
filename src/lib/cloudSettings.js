@@ -58,13 +58,31 @@ export function settingsDegraded() {
 export function loadSettings() {
   if (task) return task;
   task = (async () => {
+    // ★ 这里特意关掉 SDK 自带的重试，并在超时时 abort：
+    //
+    //   SDK 默认 `retryEnabled = true`，网络/CORS 失败时会退避重试 3~4 次
+    //   （实测整次调用被拖到约 8 秒，而单次失败其实 0.3 秒就返回了）。
+    //   这是一个**启动路径上的只读调用**，拿不到就用 DEFAULTS（见文件头），
+    //   重试既救不回结果、又让用户白等 —— 关掉它。
+    //
+    //   abort 是给「请求卡住既不成功也不失败」那种情况兜底：我们已经不等了，
+    //   就别让它在后台继续占着连接。
+    const ac = new AbortController();
     try {
       const { data, error } = await withTimeout(
-        cloud.database.from('app_settings').select('key, value'),
+        cloud.database.from('app_settings').select('key, value')
+          .retry(false)
+          .abortSignal(ac.signal),
         SETTINGS_TIMEOUT_MS,
-        'settings-timeout'
+        'settings-timeout',
+        () => ac.abort()
       );
-      if (!error && Array.isArray(data)) {
+      // ⚠️ 注意：SDK 在默认（非 throwOnError）模式下，网络失败是 **resolve 成
+      //    { data: null, error }** 而不是 reject —— 所以「拿到 error」也必须
+      //    记成 degraded，只在 catch 里置位是漏的。
+      if (error) {
+        degraded = true;
+      } else if (Array.isArray(data)) {
         for (const row of data) map[String(row.key)] = row.value;
         degraded = false;
       }
