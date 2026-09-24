@@ -62,14 +62,19 @@ export default function AvatarPreview({ persona, scale = 1 }) {
 
   // 后发长度：长发拖到肩下，中发到脖子，短发只在脑后一圈
   const backBottom = isLong ? 112 : isMedium ? 78 : 66;
+  const backTop = isLong ? 34 : isMedium ? 36 : 33;
 
   return (
     <View style={[styles.box, { transform: [{ scale }] }]}>
-      {/* 后发（在身体后面，所以先画） */}
+      {/* 后发（在身体后面，所以先画）
+          ⚠️ 别让它比头更宽：头是 left 23 / width 50 / radius 25。
+          后发原本 left 22 / width 52 / radius 14 —— 比头宽 2px 且圆角小一半，
+          于是从头两侧各露出一小块方角（小柔的深粉"方耳朵"就是这么来的）。
+          现在 left 27 / width 42，配 radius 16 收进去，只在头下缘和两肩下垂出来。 */}
       <Part
         color={hairDark}
-        radius={14}
-        style={{ left: 22, top: 30, width: 52, height: backBottom - 30 }}
+        radius={16}
+        style={{ left: 27, top: backTop, width: 42, height: backBottom - backTop }}
       />
 
       {/* 腿 / 下装 */}
@@ -89,27 +94,29 @@ export default function AvatarPreview({ persona, scale = 1 }) {
       {/* 头 */}
       <Part color={skin} radius={25} style={{ left: 23, top: 21, width: 50, height: 50 }} />
 
-      {/* 前发：盖住上半个头，下面露额头 */}
-      <Part color={hair} radius={24} style={{ left: 23, top: 19, width: 50, height: 34 }} />
-      {/* 刘海：短发/中发压低一点，长发分缝露额头 */}
-      <Part
-        color={hair}
-        radius={10}
-        style={{
-          left: isLong ? 28 : 23,
-          top: 40,
-          width: isLong ? 40 : 50,
-          height: isLong ? 10 : 16,
-        }}
-      />
+      {/* 前发：盖住上半个头（不覆盖整头），下缘就是脸的上边界。
+          ⚠️ 这里踩过四次坑，值得记全，全是"用矩形硬拼圆形"造成的：
+             ① 原设计是 50×34 / radius 24 —— 宽 50 高 34 时 RN 把圆角
+                夹到 17，它不是半圆而是个圆角方块，糊在脸上成了"粉色方脸"。
+             ② 去掉刘海、高度改 39，仍是矩形，问题照旧。
+             ③ 改成和头同尺寸（50×50 / radius 25）+ 48×48 开窗 —— 开窗
+                只比头小 2px，等于把整颗头刷成皮肤色，粉发和双马尾全没了。
+             ④ 开窗收到 40×42 后，头上白色占比依然过大：头本身是米白
+                (#FFE1D2)，只在顶上留 11px 粉色发际线，远看还是一颗白球。
+          现在定稿：前发就是**头上半部分**（50×30，圆角只在顶部，
+          下缘平直当作发际线），脸部由头本身充当 —— 不再挖洞，
+          少一层 draw 就少一次"盖错东西"的机会。
+          下面五官坐标全部按"脸上可见区域 y 49→71"排。 */}
+      <Part color={hair} radius={22} style={{ left: 23, top: 19, width: 50, height: 30 }} />
 
-      {/* 双马尾 */}
+      {/* 双马尾：从头两侧（x 23/73 之外）垂下去，起点贴着发际线所在高度 */}
       {isTwinTail && (
         <>
-          <Part color={hair} radius={11} style={{ left: 11, top: 38, width: 16, height: 40 }} />
-          <Part color={hair} radius={11} style={{ left: 69, top: 38, width: 16, height: 40 }} />
-          <Part color={hairDark} radius={5} style={{ left: 14, top: 32, width: 10, height: 10 }} />
-          <Part color={hairDark} radius={5} style={{ left: 72, top: 32, width: 10, height: 10 }} />
+          <Part color={hair} radius={11} style={{ left: 11, top: 40, width: 15, height: 42 }} />
+          <Part color={hair} radius={11} style={{ left: 70, top: 40, width: 15, height: 42 }} />
+          {/* 发绳：深色小结点，位置压在马尾上端 */}
+          <Part color={hairDark} radius={4} style={{ left: 13, top: 37, width: 11, height: 9 }} />
+          <Part color={hairDark} radius={4} style={{ left: 72, top: 37, width: 11, height: 9 }} />
         </>
       )}
 
@@ -122,26 +129,28 @@ export default function AvatarPreview({ persona, scale = 1 }) {
         </>
       )}
 
+      {/* 五官统一排布在"脸"上：可见区域是 y 49→71、x 30→66（头是 23→73）。
+          眼在 y 52、腮红 y 59、嘴 y 64，往下留出下巴。 */}
       {/* 眼睛 */}
-      <Part color={eyes} radius={3} style={{ left: 35, top: 48, width: 6, height: 8 }} />
-      <Part color={eyes} radius={3} style={{ left: 55, top: 48, width: 6, height: 8 }} />
+      <Part color={eyes} radius={3} style={{ left: 36, top: 52, width: 6, height: 8 }} />
+      <Part color={eyes} radius={3} style={{ left: 54, top: 52, width: 6, height: 8 }} />
       {/* 眼里的高光：一小点白，人物立刻"活"了 */}
-      <Part color="#FFFFFF" radius={1.5} style={{ left: 36, top: 49, width: 3, height: 3 }} />
-      <Part color="#FFFFFF" radius={1.5} style={{ left: 56, top: 49, width: 3, height: 3 }} />
+      <Part color="#FFFFFF" radius={1.5} style={{ left: 37, top: 53, width: 3, height: 3 }} />
+      <Part color="#FFFFFF" radius={1.5} style={{ left: 55, top: 53, width: 3, height: 3 }} />
 
-      {/* 腮红 */}
-      <Part color={blush} radius={4} opacity={0.75} style={{ left: 29, top: 57, width: 11, height: 6 }} />
-      <Part color={blush} radius={4} opacity={0.75} style={{ left: 56, top: 57, width: 11, height: 6 }} />
+      {/* 腮红：贴在脸颊两侧、在眼睛之下（嘴占 left 44→52，别撞上） */}
+      <Part color={blush} radius={4} opacity={0.68} style={{ left: 30, top: 59, width: 9, height: 5 }} />
+      <Part color={blush} radius={4} opacity={0.68} style={{ left: 57, top: 59, width: 9, height: 5 }} />
 
       {/* 嘴 */}
-      <Part color="#B4726C" radius={2} style={{ left: 45, top: 61, width: 6, height: 3 }} />
+      <Part color="#B4726C" radius={2} style={{ left: 44, top: 64, width: 8, height: 3 }} />
 
       {/* 眼镜（秘书）：两条细边 + 一道横梁 */}
       {isGlasses && (
         <>
-          <Part color="#3A3F4B" radius={3} style={{ left: 31, top: 45, width: 14, height: 12, borderWidth: 1.6, borderColor: '#3A3F4B', backgroundColor: 'transparent' }} />
-          <Part color="#3A3F4B" radius={3} style={{ left: 51, top: 45, width: 14, height: 12, borderWidth: 1.6, borderColor: '#3A3F4B', backgroundColor: 'transparent' }} />
-          <Part color="#3A3F4B" radius={1} style={{ left: 45, top: 50, width: 6, height: 1.6 }} />
+          <Part color="#3A3F4B" radius={3} style={{ left: 32, top: 49, width: 14, height: 12, borderWidth: 1.6, borderColor: '#3A3F4B', backgroundColor: 'transparent' }} />
+          <Part color="#3A3F4B" radius={3} style={{ left: 50, top: 49, width: 14, height: 12, borderWidth: 1.6, borderColor: '#3A3F4B', backgroundColor: 'transparent' }} />
+          <Part color="#3A3F4B" radius={1} style={{ left: 45, top: 54, width: 6, height: 1.6 }} />
         </>
       )}
     </View>
