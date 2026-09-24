@@ -26,9 +26,40 @@ const DIST = process.argv[2] || 'dist';
 const f = path.join(ROOT, DIST, 'index.html');
 let html = fs.readFileSync(f, 'utf8');
 
-// 先剥掉上一轮注入的（可能是坏的）兜底脚本
-html = html.replace(/<script>[\s\S]*?__aivaBoot[\s\S]*?<\/script>/, '');
+// 先剥掉上一轮注入的东西（可能是坏的）。
+// ★ 两条正则都必须**带 id 精确定位**。曾经写成
+//     /<script>[\s\S]*?__aivaBoot[\s\S]*?<\/script>/
+//   看似无害，但它会从"第一个 <script>"开始一直吞到"含 __aivaBoot 的那个 </script>"。
+//   本来 head 里没有别的 script 所以侥幸正确；一旦有人往 head 加了脚本（比如下面的
+//   __AIVA_BASE__），重复跑一次就会把 <title>/<meta>/<style> 全吃掉，页面直接毁掉。
+//   注入什么就用唯一的 id 标记什么，删除时也认这个 id —— 顺带让本脚本变成幂等的。
+html = html.replace(/<script id="aiva-boot-safety">[\s\S]*?<\/script>/, '');
 html = html.replace(/<style id="aiva-fixcss">[\s\S]*?<\/style>/, '');
+html = html.replace(/<script id="aiva-base">[\s\S]*?<\/script>\n?/, '');
+
+// ---------------------------------------------------------------------------
+// 把 App 的 baseUrl 暴露给运行时 ↓
+// 为什么要这一段：有几处资源是 JS 里自己拼 URL 去 fetch 的（比如 eSpeak 的
+// WASM worker），静态资源被 Expo 按 baseUrl 改写了，但这些手拼的路径没有。
+// 写死 '/xxx/' 在"挂在根域名"时没问题，一旦站点在子路径
+// （GitHub Pages 的 https://<用户名>.github.io/<仓库名>/）就会解析到站外根目录 → 404。
+// 所以从 app.json 读唯一真相源，注入成 window.__AIVA_BASE__。
+// ---------------------------------------------------------------------------
+let BASE = '/';
+try {
+  const appJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'app.json'), 'utf8'));
+  const b = appJson && appJson.expo && appJson.expo.experiments
+    ? appJson.expo.experiments.baseUrl
+    : null;
+  if (typeof b === 'string' && b) BASE = b.startsWith('/') ? b : '/' + b;
+} catch (e) {
+  console.log('读 app.json 失败，baseUrl 退回 "/":', e.message);
+}
+if (!BASE.endsWith('/')) BASE += '/';
+
+const BASE_TAG = `<script id="aiva-base">window.__AIVA_BASE__=${JSON.stringify(BASE)};</script>`;
+// 必须放在所有业务脚本之前 —— 它是一个"常量"，谁先读谁受益
+html = html.replace(/<head([^>]*)>/i, (m, attrs) => `<head${attrs}>\n  ${BASE_TAG}`);
 
 // ---------------------------------------------------------------------------
 // 手机浏览器的两个"抢手势"行为，必须在 HTML 这一层挡掉（JS 里补不回来）：
@@ -63,7 +94,7 @@ const DL_TIMEOUT = 45000;
 const BOOT_TIMEOUT = 25000;
 const QUIET = 300; // 300ms 内就起来了就别闪一下启动页
 
-const safety = `<script>
+const safety = `<script id="aiva-boot-safety">
 (function(){
   var ID='aiva-boot', started=Date.now(), painted=false, phase='download', loadAt=0, tick=null;
   var DL_TIMEOUT=${DL_TIMEOUT}, BOOT_TIMEOUT=${BOOT_TIMEOUT};
@@ -183,12 +214,18 @@ html = html.replace('<div id="root"></div>', '<div id="root"></div>\n  ' + safet
 html = html.replace('</head>', FIXCSS + '\n  </head>');
 fs.writeFileSync(f, html);
 console.log('rewrote ' + DIST + '/index.html, contains safety:', html.includes('__aivaBoot'));
+console.log('  __AIVA_BASE__ =', BASE, '| injected:', html.includes('__AIVA_BASE__'));
 
 // 校验内联脚本语法（注入失败比不注入更糟：页面会直接白屏）
-const m = html.match(/<script>([\s\S]*?)<\/script>/);
+// 认准 id —— 不能只抓"第一个 <script>"，那个现在是 __AIVA_BASE__，
+// 它会一路通过校验，把真正要验的兜底脚本放过去。
+const m = html.match(/<script id="aiva-boot-safety">([\s\S]*?)<\/script>/);
 if (m) {
   try { new Function(m[1]); console.log('inline script parses OK'); }
   catch (e) { console.log('INLINE SCRIPT SYNTAX ERROR:', e.message); process.exit(1); }
+} else {
+  console.log('INLINE SCRIPT MISSING: 兜底脚本没注入进去');
+  process.exit(1);
 }
 
 // ---- 把服务器和 package.json 一起放进 dist，好让部署环境能跑起来 ----------

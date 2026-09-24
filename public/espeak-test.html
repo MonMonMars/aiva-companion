@@ -55,7 +55,13 @@
     }
     function setStatus(msg, cls) { statusEl.className = 'status ' + (cls||''); statusEl.textContent = msg; }
 
-    const ESPEAK_BASE = '/espeakng/';
+    // 站点可能挂在子路径（GitHub Pages 是 https://<用户名>.github.io/<仓库名>/），
+    // 写死 '/espeakng/' 会被解析到站点根目录 → 404 → eSpeak 永远加载不出来。
+    // 这个测试页是 public/ 里的静态文件，不经过 fixhtml.mjs，拿不到 App 的
+    // __AIVA_BASE__，所以直接拿自身 URL 去掉文件名当 base：
+    //   /aiva-companion/espeak-test.html → /aiva-companion/
+    //   /espeak-test.html                → /
+    const ESPEAK_BASE = (location.pathname.replace(/[^/]*$/, '') || '/') + 'espeakng/';
     function loadScriptOnce(src) {
       return new Promise((resolve) => {
         if (document.querySelector(`script[src="${src}"]`)) return resolve(true);
@@ -80,7 +86,7 @@
       const t0 = performance.now();
       try {
         const kind = await loadEspeak();
-        if (!kind) throw new Error('espeakng 脚本未加载，确认 /espeakng/ 资源齐全');
+        if (!kind) throw new Error('espeakng 脚本未加载，确认 ' + ESPEAK_BASE + ' 下资源齐全');
         out(`加载方式：${kind}`);
         if (kind === 'simple') {
           const t = new window.SimpleTTS({ workerPath: ESPEAK_BASE + 'espeakng.worker.js', defaultVoice: 'zhy' });

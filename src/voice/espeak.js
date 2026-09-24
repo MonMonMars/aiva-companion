@@ -8,8 +8,8 @@
 //
 // ⚠️ 关键限制：Web Worker 不能跨域加载（浏览器同源策略）。所以下面三个文件
 //   espeakng-simple.js（或 espeakng.min.js）/ espeakng.worker.js / espeakng.worker.data
-//   必须和 App **同源**。拿到它们后放进 Expo Web 的 `public/espeakng/` 目录即可
-//   （构建后静态托管在 `/espeakng/`）。下载来源：
+//   必须和 App **同源**。拿到它们后放进 Expo Web 的 `public/espeakng/` 目录即可。
+//   下载来源：
 //     · steveseguin/espeakng.js 仓库（提供 SimpleTTS 包装器，暴露 window.SimpleTTS）
 //     · 或 jsDelivr espeakng.js/latest（提供原始 eSpeakNG，暴露 window.eSpeakNG）
 //   两个全局都兼容，下面的加载器会自动挑一个能用的。
@@ -18,7 +18,18 @@
 //   任何一步出错都抛异常，调用方（WebVoiceSession._speakEspeak）会回落到浏览器
 //   SpeechSynthesis，保证用户永远不至于「完全没声音」。
 
-const ESPEAK_BASE = '/espeakng/';
+// ⚠️ 这里原本写死 '/espeakng/' —— 本地调试和"挂根域名"的托管没问题，
+//    但 GitHub Pages 的地址是 https://<用户名>.github.io/<仓库名>/：
+//    '/espeakng/' 会被当成站点根，解析成 https://<用户名>.github.io/espeakng/ → 404，
+//    离线兜底引擎整个失效（页面照常能用，所以症状只是"没声音"，很难查）。
+//    正确做法是跟着 App 的 baseUrl 走：
+//      baseUrl 由 expo.experiments.baseUrl 决定，CI 里按仓库名写入 app.json，
+//      tools/fixhtml.mjs 再把它注入成 window.__AIVA_BASE__（根托管时是 '/'）。
+//    拿不到就退回 '/'，行为和以前一致，至少不会比现在更差。
+function espeakBase() {
+  const b = (typeof globalThis !== 'undefined' && globalThis.__AIVA_BASE__) || '/';
+  return b.endsWith('/') ? b + 'espeakng/' : b + '/espeakng/';
+}
 
 // locale → eSpeak 语音码。
 // 关键坑：eSpeak-ng 里粤语的「嗓音名」是 'zhy'（不是 BCP47 的 yue），普通话是 'zh'。
@@ -64,7 +75,7 @@ async function ensureEspeak() {
     if (typeof window === 'undefined' || !window.document) {
       throw new Error('eSpeak 仅支持浏览器环境');
     }
-    const base = ESPEAK_BASE;
+    const base = espeakBase();
     const workerPath = base + 'espeakng.worker.js';
 
     // 先试 SimpleTTS 包装器，再试原始 eSpeakNG
