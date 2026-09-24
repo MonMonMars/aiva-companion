@@ -46,6 +46,9 @@ yarn-error.*
 
 # 工具脚本的临时产物 / 截图预览
 tools/.chrome-profile/
+# ⚠️ 一次性探针脚本各自带一个 profile 后缀（-startup / -diag / -stack …），
+#    只写 .chrome-profile/ 的话这些变体每次都会脏工作区，所以按前缀整体忽略。
+tools/.chrome-profile*/
 tools/.tmp-*.mjs
 tools/.dbg.mjs
 *.log

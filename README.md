@@ -705,6 +705,40 @@ node tools/serve-dist.mjs 8130 ./dist /aiva-companion
 
 ---
 
+### 6.7 给 promise 加超时：三行代码能把整个 App 打成错误页
+
+起因很普通：线上冷启动要在标题页干等 11 秒（App 本身 0.6 秒就起来了），
+根因是 `App.js` 里 `await loadSettings()` 没有上限，而线上访问云服务被 CORS 拦掉、
+SDK 内部重试把整次调用拖到约 8 秒。于是给 `loadSettings` 加了 2 秒上限。
+
+第一版写完直接把**整页**打成了「⚠️ 应用出错了」，两个成因都不在改动处报错：
+
+1. `cloud.database.from(...).select(...)` 返回的不是真 Promise，是 `PostgrestBuilder`
+   —— 它**只实现了 `then`，没有 `catch` / `finally`**
+   （见 `node_modules/@tencent-ai/workbuddy-cloud-sdk/lib/index.js:1375`）。
+   对它调 `promise.catch(() => {})` 是**同步**抛 TypeError。
+2. 而 `Promise.race` 写在 `.catch` 之后 —— 异常发生在建立 race **之前**，
+   于是 `setTimeout` 已经排上、却没人 race 那个 guard。2 秒后 guard 变成
+   unhandled rejection；`src/ErrorBoundary.js:31` 恰好监听了 `unhandledrejection`，
+   于是整页被错误页接管。
+
+现在的做法抽成了 `src/lib/withTimeout.js`，三条约束写死在文件头：
+
+- **guard 自己先挂一个空 handler**（`guard.catch(() => {})`）——
+  无论后面任何一步同步抛错，它都不会无人接；
+- **`Promise.resolve(source)` 包一层再 race**，拿到标准接口，thenable 也能用；
+- **原调用迟到的失败也要吞掉**，否则又是一个 unhandled rejection。
+
+`tools/test-with-timeout.mjs` 把这两条钉住了，并带一节**自检**：
+把当初那个错误写法原样跑一遍，确认它确实会被测试抓出来 ——
+一条永远绿的测试等于没有测试。
+
+> 顺带提醒：`ErrorBoundary` 会把**任何**未处理的 promise 拒绝放大成整页错误。
+> 这是有意为之（宁可暴露也别静默），但意味着第三方异步噪音足以让 App 全页不可用。
+> 改异步代码时，`unhandledrejection` 不再是"控制台里的一条红字"，而是**白屏**。
+
+---
+
 ## 七、几个已经做进去的取舍
 
 1. **没有用真流式输出**。React Native 的 `fetch` 对流支持不稳定，容易在非主流机型上卡死。

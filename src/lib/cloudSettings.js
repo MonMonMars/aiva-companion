@@ -8,6 +8,7 @@
 //    断网 / 云不可用的时候行为要和以前一模一样，不能因为加了云就变得玩不了。
 //    但**数据持久化**不在这里兜底 —— 该同步的还是走 user_state，同步不了会明确报错。
 import { cloud } from './cloudClient';
+import { withTimeout } from './withTimeout';
 
 const DEFAULTS = {
   decay_affection_per_hour: 0.6,
@@ -23,6 +24,32 @@ const DEFAULTS = {
 
 let map = { ...DEFAULTS };
 let task = null;
+// 上一次拉取是不是超时/失败了。给自检和排查用 —— 后台改了值客户端没吃到时，
+// 先看这个就能分清是「网络拿不到」还是「缓存没刷新」。
+let degraded = false;
+
+/**
+ * 拉开关的等待上限。
+ *
+ * ⚠️ 这个上限是实测逼出来的，别删。线上（GitHub Pages 域名）访问云服务会被
+ *    CORS 拦掉，SDK 内部会重试，实测整次调用拖到 **约 8 秒**；而 App.js 是
+ *    `await loadSettings()` 之后才 `setReady(true)` 的 —— 于是每次冷启动都要
+ *    在标题页干等 10 秒（App 本身 0.6 秒就起来了）。
+ *
+ *    DEFAULTS 本来就是为「拿不到」准备的（见文件头），拿不到就别等。
+ *    2 秒对正常网络绰绰有余（实测一次成功请求 ~0.1–0.6 秒），
+ *    对断网也只是多等 2 秒而已。
+ */
+const SETTINGS_TIMEOUT_MS = 2000;
+
+/** ⚠️ 超时的具体实现在 ./withTimeout.js，别在本文件里另写一份。
+ *  第一版就是在这儿手写的，结果把整个 App 打成了错误页 —— 完整经过和
+ *  两条硬约束都记在那个文件头，改动前务必先读一遍。 */
+
+/** 这次的默认值是不是因为拿不到云才用的 */
+export function settingsDegraded() {
+  return degraded;
+}
 
 /**
  * 拉一次开关。幂等：同时被十个地方调用也只会发一个请求。
@@ -32,12 +59,18 @@ export function loadSettings() {
   if (task) return task;
   task = (async () => {
     try {
-      const { data, error } = await cloud.database.from('app_settings').select('key, value');
+      const { data, error } = await withTimeout(
+        cloud.database.from('app_settings').select('key, value'),
+        SETTINGS_TIMEOUT_MS,
+        'settings-timeout'
+      );
       if (!error && Array.isArray(data)) {
         for (const row of data) map[String(row.key)] = row.value;
+        degraded = false;
       }
     } catch (e) {
       // 拉不到就用默认值继续，不打断点评；CloudSettings 的影响面只是几个数值
+      degraded = true;
     }
     return map;
   })();
