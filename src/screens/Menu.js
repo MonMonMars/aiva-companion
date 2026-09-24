@@ -103,6 +103,10 @@ export default function Menu({
       <ScrollView style={styles.body} contentContainerStyle={styles.bodyInner} showsVerticalScrollIndicator={false}>
         {view === 'main' && (
           <>
+            {/* ★ 顶部必须给 PreloadBadge（absolute left:14 top:104，App.js 挂在所有浮层之上）
+                留出净空，否则"亲密"这一行的标签会被那个小圆环压住。
+                13(左边距) + 圆环 60 高 + 7*2 内边距 ≈ 88，取 96 留点余量。 */}
+            <View style={{ height: 96 }} />
             <StatBar
               emoji="💞"
               label="亲密"

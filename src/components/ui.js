@@ -122,7 +122,9 @@ export function StatBar({ label, value, max = 100, color, right, emoji }) {
         <Text style={styles.statLabel}>{emoji ? `${emoji} ` : ''}{label}</Text>
         <Text style={styles.statValue}>{right ?? `${Math.round(value)} / ${max}`}</Text>
       </View>
-      <View style={styles.track}>
+      {/* 轨道用"填充色的 12% 浓度"，而不是固定的白色半透明 ——
+          白线在深色面板上会亮过填充本身，喧宾夺主（见 withAlpha 的注释）。 */}
+      <View style={[styles.track, { backgroundColor: withAlpha(c, 0.13) }]}>
         <LinearGradient
           colors={[shadeColor(c, 18), c]}
           start={{ x: 0, y: 0 }}
@@ -176,6 +178,27 @@ export function shadeColor(hex, percent) {
       .toString(16)
       .slice(1)
   );
+}
+
+/**
+ * 把一个可能写死的十六进制色变成"指定透明度"的 rgba。
+ * 只认 #RGB / #RRGGBB，其它形式（已经是 rgba / 颜色名 / undefined）原样返回 ——
+ * 这样调用方可以无脑传 persona.colors.primary，碰到脏值也不会把样式写坏。
+ *
+ * 为什么要它：这条分隔线原本写的是 'rgba(255,255,255,0.12)'（纯白 12%），
+ * 在 #14151F 的深色面板上等于把亮度抬到 1.2 倍，于是不管本来的强调色是什么，
+ * 看上去都是一条白色横杠 —— 每条 StatBar 底下都拖着一条，很脏。
+ */
+function withAlpha(hex, a) {
+  const m = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(String(hex || ''));
+  if (!m) return hex;
+  let s = m[1];
+  if (s.length === 3) s = s.split('').map((c) => c + c).join('');
+  const n = parseInt(s, 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return `rgba(${r},${g},${b},${a})`;
 }
 
 const styles = StyleSheet.create({
@@ -248,6 +271,8 @@ const styles = StyleSheet.create({
   track: {
     height: 6,
     borderRadius: 1,
+    // 具体的底色由 StatBar 按「填充色的低浓度版」内联给（见 withAlpha）。
+    // 这里只留一个兜底，避免有人单独引用 styles.track 时没有背景。
     backgroundColor: 'rgba(255,255,255,0.08)',
     overflow: 'hidden',
   },

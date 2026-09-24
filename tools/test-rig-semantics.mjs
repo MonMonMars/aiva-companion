@@ -16,9 +16,13 @@
 // 跑：node --import ./tools/ext-resolve.mjs tools/test-rig-semantics.mjs
 
 import * as THREE from 'three';
-import { createRigDriver } from '../src/three/rigDriver';
-import { createPoseScheduler } from '../src/anim/poseScheduler';
-import { IDLE_POSES } from '../src/anim/idlePoses';
+// ⚠️ 这两行原来写的是裸路径（'../src/three/rigDriver'），在 Node 的 ESM 下必须带扩展名 ——
+//    它不会像 bundler 那样做扩展名推断，直接就 ERR_MODULE_NOT_FOUND。
+//    症状很有迷惑性：报的是"Cannot find module ... rigDriver"，但文件明明在，
+//    于是看着像模块被删了。以后加任何 dev 脚本都要留意这条。
+import { createRigDriver } from '../src/three/rigDriver.js';
+import { createPoseScheduler } from '../src/anim/poseScheduler.js';
+import { IDLE_POSES } from '../src/anim/idlePoses.js';
 
 // 角色站直、面朝 +Z：她的左手边是 +X（VRM 规范）
 const DEFS = [
