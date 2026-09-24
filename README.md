@@ -593,6 +593,60 @@ npm run verify:lips http://127.0.0.1:8130/   # 浏览器里真的说一句，截
 从某个模块导入了它根本没导出的名字（真实踩过：从 `components/ui` 导入 `UI`，
 但 `UI` 其实住在 `theme.js`，于是 `color: UI.text` 直接抛异常，整个设置页白屏）。
 
+### 6.2 在 Node 里直接跑 `tools/` 下的脚本
+
+`src/` 里的 import 全部**不带扩展名**（`'../theme'`）—— Metro / webpack 会做扩展名推断，
+但 **Node 的原生 ESM 不会**，照着源码那样写直接就是：
+
+```
+ERR_MODULE_NOT_FOUND: Cannot find module '../src/three/rigDriver'
+```
+
+错误信息长得像「文件被删了」，极具误导性。`src/` 里有 110 处这种裸路径，逐个补太蠢，
+所以仓库里准备了 loader，**不改源码**就能让 Node 认：
+
+```bash
+node --import ./tools/src-resolve-loader.mjs tools/test-rig-semantics.mjs
+# 等价简写：
+node tools/register-src.mjs tools/test-rig-semantics.mjs
+```
+
+自己写这类 loader 有两个坑，而且**都是静默失效、一句错都不报**：
+
+- `--import ./x.mjs` 是把 x 当**入口模块**执行，**不会**自动注册成 hooks 模块。
+  必须在 x 里显式 `register(import.meta.url)` 把自己注册进去，
+  否则你的 `resolve()` 一次都不会被调用（写完以为没生效但又没报错，就是这个原因）。
+- 解析要基于 `context.parentURL`（发起 import 的那个文件），不能用 loader 自己的
+  `import.meta.url`；返回值还得是 `file://` URL（`pathToFileURL`），
+  否则 Windows 上报 `ERR_UNSUPPORTED_ESM_URL_SCHEME: Received protocol 'c:'`。
+
+### 6.3 截图探针：别把工具的错算到 App 头上
+
+`tools/cdp-shot.mjs` 用 CDP 驱动 Chrome 截图。这里的 UI 是 React Native Web，
+真正可点的 Pressable 在 DOM 上有唯一指纹：
+
+```
+tabindex="0"  且  getComputedStyle(el).cursor === 'pointer'
+```
+
+**必须按这个筛，绝不能按「包含某段文字 + 面积最小」去挑。** 真实踩过一次，代价很大：
+角色卡 footer 的小字 `<div>开始相处</div>` 面积只有 **851**，底部 CTA 是 **16800** ——
+按面积最小挑，探针每次都点中 footer，而 footer 的 `onPress` 只 `setPickId()` 不跳转，
+画面纹丝不动。当时的结论被写成「**这是 App 的真 bug**」，其实 App 一行代码都没错，
+是探针瞎了。所以现在每屏都加了**硬断言**（`inputs > 0`、`☰ 是否存在`、关键词是否出现）。
+
+> **截图本身永远不会告诉你它拍错了地方，只有 DOM 断言会。**
+> 下次遇到「自动化点了没反应」，先问「我点的到底是哪个元素」，再去怀疑产品。
+
+本地预览 Pages 产物时，`dist/` 就是站点根，而 index.html 里的引用带 `/aiva-companion/` 前缀：
+
+```bash
+node tools/serve-dist.mjs 8130 ./dist /aiva-companion
+```
+
+第三个参数负责剥前缀。另外它对**带扩展名却找不到**的路径如实返回 404 而不是回落 index.html ——
+否则浏览器会拿到 HTML 当 JS 解析，报一个跟真因毫不相干的 `SyntaxError: Unexpected token '<'`。
+
 ---
 
 ## 七、几个已经做进去的取舍
