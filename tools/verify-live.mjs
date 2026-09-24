@@ -34,7 +34,14 @@ const MARKS = [
   ['伸个懒腰', 'Sora 的签名待机'],
 ];
 // ASCII 标识符不需要转义
-const ASCII_MARKS = ['head-tilt', 'idlePose', 'bgId'];
+const ASCII_MARKS = [
+  'head-tilt', 'idlePose', 'bgId',
+  // 启动路径上的关键改动也要盯：这两个串来自 src/lib/withTimeout.js，
+  // 「push 成功」不代表线上跑的是新代码 —— 2026-09-24 就是靠这条才发现
+  // 线上耗时没变、自己的归因错了（那 8 秒根本不在 loadSettings 里）。
+  'settings-timeout',
+  'Promise.race',
+];
 
 const res = await fetch(SITE, { headers: { 'User-Agent': 'node' } });
 if (!res.ok) { console.log('index', res.status); process.exit(1); }
