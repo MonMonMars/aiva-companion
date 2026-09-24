@@ -746,6 +746,42 @@ SDK 内部重试把整次调用拖到约 8 秒。于是给 `loadSettings` 加了
 > 这是有意为之（宁可暴露也别静默），但意味着第三方异步噪音足以让 App 全页不可用。
 > 改异步代码时，`unhandledrejection` 不再是"控制台里的一条红字"，而是**白屏**。
 
+### 6.8 同一个坑的另一半：auth 请求连超时都没有
+
+查「云端不可用时账号页会怎样」时量出来的，和 6.7 是同一类问题但更隐蔽 ——
+**SDK 的 auth 请求连兜底都没有**：`AuthModule` 用的是裸 fetch，
+`lib/index.js` 里的 `AbortSignal` / `timeout` 全在 database 和 storage 模块，auth 一份都没有
+（`postForSession` → `request` → 一次 `this.fetch(...)`，失败时才 `fail(normalizeNetworkError(err))`）。
+
+后果取决于网络是「快速失败」还是「挂起」：
+
+- **快速失败（线上现在的 CORS 情况）**：fetch 立刻 reject，被归一成
+  `{ kind: 'network' }` 并 **resolve 成 `{ data: null, error }`**（不是 reject），
+  UI 出「连不上服务器，检查一下网络」，`finally` 复位 busy。表现可接受，**不用改**。
+- **挂起**（电梯里、欠费 4G、DNS 黑洞 —— 连不上但也没被拒）：`await` 永不落定。
+  这时有两个地方会被永久钉住：
+  - `useAccount` 起始 `loading: true`，只有 `getSession()` 落定才置 false
+    → 账号页永远停在「正在读取账号…」；
+  - `AccountView` 每个操作 `setBusy(true)` 之后 await auth
+    → 登录按钮被 `ActivityIndicator` **永久替换**，而且用户**没有任何取消入口**。
+
+改法：所有 `cloud.auth.*` 一律改走 `src/lib/cloudClient.js` 的 `authCall()`
+（内部复用 6.7 那个 `withTimeout`），超时归一成 `{ error: { kind: 'timeout' } }`
+—— 这样调用处原有的 `if (r.error) return fail(r.error)` 一行都不用改，
+超时会自然落进「服务器没响应，等一会儿再试」那句人话里
+（注意别复用「检查一下网络」：挂起不是用户网络设置的锅，别误导他去改设置）。
+
+`tools/test-auth-timeout.mjs` 锁住这条契约，同样带自检。
+
+**没有一起改 database 调用**（`ensureProfile` / `pushState` / `pullState`）：
+它们都发生在 auth 成功之后，而 auth 成功已经证明网络可用，挂起的概率低一个量级；
+真要卡住也只是这一次同步慢，不会把入口堵死。留作待办。
+
+> 顺带：为了让这些模块能在 node 里被单测，`tools/ext-resolve-hooks.mjs` 补了一个
+> `load` 钩子，把裸 `import cfg from './xxx.json'` 当成 `export default {...}` 喂回去
+> （原来 resolve 故意跳过 .json，否则 `./foo` 会被误解析成 `./foo.json`）。
+> 有它之后，凡是间接 import 了 `cloudConfig.json` 的模块才第一次能进测试。
+
 ---
 
 ## 七、几个已经做进去的取舍

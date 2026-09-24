@@ -32,6 +32,7 @@ const MARKS = [
   ['樱花树下', '小柔的默认舞台'],
   ['双手交握', '林秘书的签名待机'],
   ['伸个懒腰', 'Sora 的签名待机'],
+  ['服务器没响应', 'auth 超时的人话文案（cloudClient.js）'],
 ];
 // ASCII 标识符不需要转义
 const ASCII_MARKS = [
@@ -41,6 +42,9 @@ const ASCII_MARKS = [
   // 线上耗时没变、自己的归因错了（那 8 秒根本不在 loadSettings 里）。
   'settings-timeout',
   'Promise.race',
+  // auth 路径的超时兜底（src/lib/cloudClient.js 的 authCall）。
+  // 同一套道理：只有在线上产物里搜到，才算这次改动真的上线了。
+  'auth-timeout',
 ];
 
 const res = await fetch(SITE, { headers: { 'User-Agent': 'node' } });

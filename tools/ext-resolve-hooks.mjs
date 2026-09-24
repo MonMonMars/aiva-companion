@@ -9,7 +9,7 @@
  * 用法：node --import ./tools/ext-resolve.mjs tools/xxx.mjs
  * （Node 22 已经移除 --experimental-specifier-resolution，只能上 loader hook）
  */
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 
@@ -30,4 +30,23 @@ export async function resolve(specifier, context, nextResolve) {
     }
   }
   return nextResolve(specifier, context);
+}
+
+/**
+ * 让 `import cfg from './xxx.json'`（不带 import attributes）在 node 里也能跑。
+ *
+ * 源码按 Metro 的习惯写的裸 JSON import，node 会报
+ * ERR_IMPORT_ATTRIBUTE_MISSING。上面 resolve 又故意跳过 .json（否则会把
+ * `./foo` 误解析成 `./foo.json`）。所以在这里补一步：把 JSON 当成
+ * `export default {...}` 的模块喂回去。
+ *
+ * 有它之后，凡是间接 import 了 cloudConfig.json 的模块（cloudClient 等）
+ * 才第一次能在 node 里被单测到。
+ */
+export async function load(url, context, nextLoad) {
+  if (url.endsWith('.json')) {
+    const src = readFileSync(fileURLToPath(url), 'utf8');
+    return { format: 'module', source: `export default ${src};`, shortCircuit: true };
+  }
+  return nextLoad(url, context);
 }

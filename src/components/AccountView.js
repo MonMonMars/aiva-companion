@@ -9,7 +9,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator, Linking } from 'react-native';
 import { UI, inputFont } from '../theme';
-import { cloud, authErrorMessage } from '../lib/cloudClient';
+import { cloud, authCall, authErrorMessage } from '../lib/cloudClient';
 import { bool } from '../lib/cloudSettings';
 import { syncOnLogin, pushState } from '../lib/cloudSync';
 import { maskEmail } from '../lib/cloudAccount';
@@ -79,7 +79,7 @@ export default function AccountView({ acc, toast }) {
           danger
           onPress={async () => {
             try {
-              await cloud.auth.signOut();
+              await authCall(() => cloud.auth.signOut());
               toast('已退出');
             } catch (e) {
               toast(authErrorMessage(e));
@@ -97,7 +97,10 @@ export default function AccountView({ acc, toast }) {
     if (!email.includes('@')) return toast('先填邮箱');
     setBusy(true);
     try {
-      const started = await cloud.auth.signInWithOtp({ email });
+      // ⚠️ 不能直接 await cloud.auth.*：SDK 的 auth 是裸 fetch，没有超时也没有
+      //    abort，网络挂起时 await 永不落定，setBusy(true) 会把登录按钮换成
+      //    一个永远不停、而且没有取消入口的转圈。全部改走 authCall。
+      const started = await authCall(() => cloud.auth.signInWithOtp({ email }));
       if (started.error) return fail(started.error);
       setPending(started.data);
       setStep('code');
@@ -108,7 +111,7 @@ export default function AccountView({ acc, toast }) {
   const verifyLoginCode = async () => {
     setBusy(true);
     try {
-      const done = await pending.verify({ token: code });
+      const done = await authCall(() => pending.verify({ token: code }));
       if (done.error) return fail(done.error);
       setCode('');
       setStep('input');
@@ -123,7 +126,7 @@ export default function AccountView({ acc, toast }) {
     if (!password) return toast('填一下密码');
     setBusy(true);
     try {
-      const r = await cloud.auth.signInWithPassword({ email, password });
+      const r = await authCall(() => cloud.auth.signInWithPassword({ email, password }));
       if (r.error) return fail(r.error);
       setPassword('');
       await acc.refresh();
@@ -138,7 +141,7 @@ export default function AccountView({ acc, toast }) {
     if (!password || password.length < 6) return toast('密码至少 6 位');
     setBusy(true);
     try {
-      const sent = await cloud.auth.sendOtp({ email });
+      const sent = await authCall(() => cloud.auth.sendOtp({ email }));
       if (sent.error) return fail(sent.error);
       // 已经是老用户的话不能拿副表单当注册用：中性地引导去登录，
       // 不在文案里暴露「这个邮箱注册过」（会被拿来撞号）。
@@ -152,13 +155,13 @@ export default function AccountView({ acc, toast }) {
   const finishSignup = async () => {
     setBusy(true);
     try {
-      const done = await cloud.auth.verifyOtp({
+      const done = await authCall(() => cloud.auth.verifyOtp({
         verificationId: pending.verificationId,
         token: code,
         email,
         isExistingUser: pending.isExistingUser,
         password,
-      });
+      }));
       if (done.error) return fail(done.error);
       setCode(''); setPassword(''); setStep('input');
       await acc.refresh();
@@ -171,7 +174,7 @@ export default function AccountView({ acc, toast }) {
     if (!email.includes('@')) return toast('先填邮箱');
     setBusy(true);
     try {
-      const started = await cloud.auth.resetPasswordForEmail(email);
+      const started = await authCall(() => cloud.auth.resetPasswordForEmail(email));
       if (started.error) return fail(started.error);
       setPending(started.data);
       setStep('reset');
@@ -183,7 +186,7 @@ export default function AccountView({ acc, toast }) {
     if (!password || password.length < 6) return toast('新密码至少 6 位');
     setBusy(true);
     try {
-      const done = await pending.updateUser({ nonce: code, password });
+      const done = await authCall(() => pending.updateUser({ nonce: code, password }));
       if (done.error) return fail(done.error);
       setCode(''); setPassword(''); setStep('input');
       await acc.refresh();
