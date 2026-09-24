@@ -757,8 +757,27 @@ node tools/serve-dist.mjs 8130 ./dist /aiva-companion
 node tools/check-persona-coverage.mjs
 ```
 
+已挂进 `npm test` 的第一步，`18 个角色全绿 + 自检通过` 才算过。
+
 新增发型 `style` 时，还要去 `src/components/AvatarPreview.js` 补一档轮廓，
 否则会掉到短发默认形状上，看着像"新角色和别人撞发型了"。
+那个文件的头部坐标很脆（`50×30` 的前发 + 头本身当脸），改动前先读文件里的注释。
+
+### 发版之后：确认线上真的是新的
+
+`git push` 成功 ≠ 线上已经更新，中间还隔着 Actions、Pages 构建和 CDN 缓存：
+
+```bash
+node tools/verify-live.mjs
+```
+
+它抓首页 → 取 `<script src>` → 在 bundle 正文里找一串标记串，全命中才退出 0。
+
+> ⚠️ 找中文标记必须**先转成 `\uXXXX`** —— minifier 会把中文全部转义，直接搜中文会全 MISS，
+> 让人误以为代码没发出去（这个坑踩过）。
+> ⚠️ 也别把「静态文本 + `{变量}`」当成一条字符串去搜：JSX 编译时会把
+> `默认舞台 · {label}` 切成两段，线上根本没有「默认舞台 · 」这个连续字面量。
+> 搜**不带尾空格的最短片段**。
 
 **3D 形象怎么处理：** 不配模型也能跑 —— `loadCompanionModel` 会返回 `no-asset`，界面上就是那个程序化角色。
 但要注意 `src/lib/companionModel.js` 里的 `PERSONA_MODELS` 用的是静态 `require`，**登记了却不存在的文件会让 Metro 直接构建失败**。
