@@ -222,10 +222,14 @@ jobs:
       # 发版不等于上线：中间隔着 Pages 缓存和 CDN，刚部署完立刻抓往往还是旧 bundle
       # （实测抓到过哈希和上一版完全一样的包，于是 2 项 MISS，差点以为改动没生效）。
       # 所以这里轮询重试，直到新包出现。
+      # ⚠️ 网址**必须用 page_url**，别再让脚本里那个写死的默认值生效：
+      #   仓库一改名，baseUrl 会跟着变、page_url 也会变，而写死的那个不会变 ——
+      #   于是这一步会一直去查旧站点，而且查得通（静默的假绿）。
+      #   现在它和下面「线上冒烟」用**同一个来源**；脚本里那个默认值只留给手工跑。
       - name: 核查线上产物（新包是否真的上线）
         run: |
           for i in $(seq 1 12); do
-            node tools/verify-live.mjs && exit 0
+            node tools/verify-live.mjs --url ${{ steps.deployment.outputs.page_url }} && exit 0
             echo "--- 第 $i 次未通过（新包可能还没刷到），等 45 秒再试"
             sleep 45
           done

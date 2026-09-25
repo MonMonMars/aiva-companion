@@ -1,14 +1,24 @@
 /**
  * 发版后核查：线上 bundle 里到底有没有你刚写的代码。
  *
- * 用法： node tools/verify-live.mjs
+ * 用法： node tools/verify-live.mjs [--url <网址>]
  *
  * 只做三件事：抓首页 -> 取 <script src> -> 在 bundle 正文里找标记串。
  * 之所以要单独一个脚本，是因为「push 成功」和「线上是新的」是两件事，
  * 而中间隔着 Actions、Pages 缓存、CDN。
+ *
+ * ⚠️ `--url` 是后来补的，补的是「同一个网址被写在两处、各写各的」：
+ *    CI 的 deploy job 里有两个步骤都要打线上 —— 这一步原本**写死**网址，
+ *    而下面「线上冒烟」那步用的是 `${{ steps.deployment.outputs.page_url }}`。
+ *    仓库一改名，baseUrl 会跟着变、page_url 也会变，**唯独这个写死的不会变**：
+ *    于是「核查线上产物」会一直去查旧站点，而且查得通 —— 静默的假绿。
+ *    现在两边都用同一个来源（page_url），写死的只剩手工跑时的默认值。
  */
 // ⚠️ minifier 会把中文转成 \uXXXX 转义，直接搜中文会全 ✗ —— 必须先转义再搜。
-const SITE = 'https://monmonmars.github.io/aiva-companion/';
+const DEFAULT_SITE = 'https://monmonmars.github.io/aiva-companion/';
+const argUrl = (() => { const i = process.argv.indexOf('--url'); return i >= 0 ? process.argv[i + 1] : null; })();
+// 补尾斜杠：`new URL(相对路径, SITE)` 的结果取决于 SITE 是目录还是文件
+const SITE = (argUrl || DEFAULT_SITE).replace(/\/?$/, '/');
 
 const esc = (s) => [...s].map((c) => {
   const code = c.codePointAt(0);
@@ -53,6 +63,13 @@ const ASCII_MARKS = [
   // 卡住的是麦克风本身，所以更要确认它上线了。
   'net-timeout',
 ];
+
+// 每次都把核查目标打出来 —— 否则「它到底查了哪个网址」只能去读代码才知道，
+// 而写死的那个一旦过时，日志上看着还是一切正常（静默的假绿）。
+console.log(`核查的是：${SITE}`);
+if (argUrl && argUrl !== DEFAULT_SITE) {
+  console.log(`⚠️ 传进来的网址和脚本里写死的默认值 ${DEFAULT_SITE} 不一样 —— 默认值过时了，顺手改掉（它只影响手工跑时的默认目标）`);
+}
 
 const res = await fetch(SITE, { headers: { 'User-Agent': 'node' } });
 if (!res.ok) { console.log('index', res.status); process.exit(1); }
