@@ -49,6 +49,9 @@ const ASCII_MARKS = [
   // SDK 建 PostgrestClient 时压根没传 timeout，走的是裸 fetch 那条分支。
   // 少了这个串说明登录成功后的同步/upload 还在裸奔。
   'db-timeout',
+  // STT / TTS 那批对外请求（src/lib/netFetch.js）—— 这次是核心交互，
+  // 卡住的是麦克风本身，所以更要确认它上线了。
+  'net-timeout',
 ];
 
 const res = await fetch(SITE, { headers: { 'User-Agent': 'node' } });

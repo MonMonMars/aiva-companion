@@ -771,6 +771,7 @@ SDK 内部重试把整次调用拖到约 8 秒。于是给 `loadSettings` 加了
 |---|---|---|
 | auth | `authCall()` | `cloud.auth.*`（登录、注册、登出、改密码） |
 | database | `dbCall()` | `cloud.database.*`（ensureProfile / pullState / pushState） |
+| 对外的 API | `netFetch()` | STT / TTS 的所有网络请求（详见 6.9） |
 
 `dbCall` 会把一个 `AbortSignal` 交给调用方，超时那一刻顺手把请求掐掉 ——
 我们已经不等了，就别让它在后台继续占着连接（弱网正是要防的场景）。
@@ -797,6 +798,43 @@ promise 200ms 后仍未落定），并把 `db-timeout` 加进了 `verify-live.mj
 > `load` 钩子，把裸 `import cfg from './xxx.json'` 当成 `export default {...}` 喂回去
 > （原来 resolve 故意跳过 .json，否则 `./foo` 会被误解析成 `./foo.json`）。
 > 有它之后，凡是间接 import 了 `cloudConfig.json` 的模块才第一次能进测试。
+
+### 6.9 第三次遇到同一个坑：语音链路（这次在核心交互上）
+
+修完 auth / database 之后没有停手，用一个统一判据把全项目扫了一遍：
+**每个 UI 等待态的出口，是不是写在 `await` 之后或 `finally` 里**。
+凡是这种写法，只要 await 永不落定，出口就永不执行 —— UI 永久卡住且没有取消入口。
+结果在语音链路又抓到一批，而且比前两次严重：它卡的是麦克风本身。
+
+```
+webSession.js:346   setState('thinking')
+        ↓
+        await transcribe()          ← STT 里 8 个对外请求，一个超时都没有
+        ↓ 第 355 / 359 行           onState({ state: 'idle' })  ← 出口在这之后
+useVoice.js:244     isBusy = state === 'thinking' || state === 'speaking'
+        ↓ 上面那步不返回
+        永久 true → 麦克风按不动，也插不了话
+```
+
+统一走 `src/lib/netFetch.js`（30 秒上限，ABORT + AbortError 转人话 + finally 清定时器）：
+
+- `src/voice/stt.js` —— **8 处**对外请求（Whisper / Azure / SiliconFlow / ElevenLabs / Gemini 两处 / 模型列表两处）
+- `src/voice/tts.js` —— **4 处**合成请求（OpenAI / Azure 及其降级重试 / ElevenLabs）
+
+两个刻意保留的例外，改的时候别顺手把它们也套上：
+
+1. **读本地录音的 `fetch(uri).blob()` 保持裸奔** —— STT 里 14 个 fetch 只有 8 个是网络请求，
+   另外 6 个读的是本机文件。移动端读文件本来就可能慢，给它加上限只会把正常流程掐断。
+2. **调用方自己带了 signal 时不覆盖** —— 一次性下载要更长的等待，别替它做主。
+
+超时带 `code = 'net-timeout'`，不混进文案；`verify-live.mjs` 靠这个串在线上产物里验一次。
+`tools/test-net-timeout.mjs` 锁住契约，其中两条自检是刻意留的：
+「套了兜底的挂起请求 200ms 内会落定」和「裸的挂起 fetch 200ms 后仍未落定」——
+后一条负责证明前一条有区分力。
+
+> **又一次证明了同一件事**：这个 bug 不会自己暴露。三次都是「代码看着没问题、样例跑得通」，
+> 只在「连不上但也没被拒」这一种网络形态下发作。所以别靠读代码确认它有/没有超时，
+> 去找**不传 timeout 时走哪条分支**，或者干脆写一条会挂起的测试。
 
 ---
 

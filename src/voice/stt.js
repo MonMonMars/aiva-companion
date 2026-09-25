@@ -7,6 +7,14 @@
 
 import { Platform } from 'react-native';
 import { currentCountry, ccName } from '../lib/region';
+import { netFetch } from '../lib/netFetch';
+
+// ⚠️ 凡是对**外部 API** 的请求都要走 netFetch（不是裸 fetch）：挂起时会永不落定，
+//    而这里的调用方 webSession.js 在 setState('thinking') 之后才 await transcribe，
+//    那些 `onState({ state: 'idle' })` 的出口全在这一步返回之后 —— 没有超时上限，
+//    用户松手后就永远停在「等她说」的状态，麦克风也按不动了。
+//    注意：下面读本地录音的 `fetch(uri).blob()` **保持原样**，别一起套上来 ——
+//    本机读文件在移动端本来就可能慢，给它加上限只会把正常流程掐断。
 
 // Whisper 会把粤语整段洗成书面普通话（"唔知"→"不知道"、"食咗饭未"→"吃饭了吗"），
 // 对一个主打粤语的陪伴 App 来说是致命的 —— 听进去的和说出口的不是一个味道。
@@ -40,7 +48,7 @@ async function whisperRequest(url, apiKey, uri, model, language, prompt) {
   if (prompt) form.append('prompt', prompt);
   form.append('response_format', 'json');
 
-  const res = await fetch(url, {
+  const res = await netFetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}` },
     body: form,
@@ -61,7 +69,7 @@ async function whisperRequest(url, apiKey, uri, model, language, prompt) {
 /** Azure Speech-to-Text：直接 POST 原始音频字节，语言放 query string */
 async function azureRequest(region, apiKey, uri, locale) {
   const blob = await (await fetch(uri)).blob();
-  const res = await fetch(
+  const res = await netFetch(
     `https://${region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language=${encodeURIComponent(locale)}&format=detailed`,
     {
       method: 'POST',
@@ -104,7 +112,7 @@ async function siliconRequest(apiKey, uri) {
     form.append('file', blob, 'speech.m4a');
     form.append('model', 'FunAudioLLM/SenseVoiceSmall');
     try {
-      const res = await fetch(`${h}/v1/audio/transcriptions`, {
+      const res = await netFetch(`${h}/v1/audio/transcriptions`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}` },
         body: form,
@@ -145,7 +153,7 @@ async function elevenRequest(apiKey, uri, language) {
           : '';
   if (code) form.append('language_code', code);
 
-  const res = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+  const res = await netFetch('https://api.elevenlabs.io/v1/speech-to-text', {
     method: 'POST',
     headers: { 'xi-api-key': apiKey },
     body: form,
@@ -253,7 +261,7 @@ function geminiExplain(status, msg) {
 }
 
 async function geminiPost(path, apiKey, body) {
-  const res = await fetch(`${GEMINI_HOST}/${path}`, {
+  const res = await netFetch(`${GEMINI_HOST}/${path}`, {
     method: 'POST',
     headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -316,7 +324,7 @@ async function geminiInteractions(apiKey, uri, language) {
   );
   form.append('file', blob, 'speech.m4a');
 
-  const up = await fetch(`${GEMINI_HOST}/upload/v1beta/files`, {
+  const up = await netFetch(`${GEMINI_HOST}/upload/v1beta/files`, {
     method: 'POST',
     headers: { 'x-goog-api-key': apiKey },
     body: form,
@@ -446,7 +454,7 @@ export async function checkSttProvider(cfg) {
   const k = cfg?.keys || {};
 
   const ping = async (url, headers, okMsg) => {
-    const res = await fetch(url, { method: 'GET', headers });
+    const res = await netFetch(url, { method: 'GET', headers });
     const text = await res.text();
     if (!res.ok) {
       let d = text.slice(0, 200);
@@ -459,7 +467,7 @@ export async function checkSttProvider(cfg) {
   try {
     if (provider === 'gemini') {
       if (!k.geminiKey) return { ok: false, msg: '还没填 Gemini Key' };
-      const res = await fetch(`${GEMINI_HOST}/v1beta/models`, {
+      const res = await netFetch(`${GEMINI_HOST}/v1beta/models`, {
         headers: { 'x-goog-api-key': k.geminiKey },
       });
       const text = await res.text();

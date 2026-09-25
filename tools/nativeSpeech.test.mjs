@@ -14,28 +14,26 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadSrc } from './lib/loadSrc.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-/** 把 .js 源码临时复制成 .mjs 再 import —— 项目没有 type:module，直接 import 会失败 */
-async function loadSrc(relPath) {
-  const src = path.join(root, ...relPath.split('/'));
-  const tmp = path.join(root, 'tools', `.tmp-${path.basename(relPath, '.js')}-${process.pid}.mjs`);
-  fs.copyFileSync(src, tmp);
-  try {
-    return await import('file://' + tmp.replace(/\\/g, '/'));
-  } finally {
-    try { fs.rmSync(tmp, { force: true }); } catch (_) {}
-  }
+/**
+ * 把 .js 源码临时复制成 .mjs 再 import —— 项目没有 type:module，直接 import 会失败。
+ * 走 lib/loadSrc.mjs 那个 helper：副本必须放在**源码同目录**，
+ * 放 tools/ 下会让源码里的 `'../lib/xxx'` 以 tools/ 为基准解析，直接找不到模块。
+ */
+async function loadSrcFile(relPath) {
+  return loadSrc(root, relPath);
 }
 
 const readSrc = (relPath) => fs.readFileSync(path.join(root, ...relPath.split('/')), 'utf8');
 
-const ttsMod = await loadSrc('src/voice/tts.js');
+const ttsMod = await loadSrcFile('src/voice/tts.js');
 const { EMOTIONS } = ttsMod;
-const emoMod = await loadSrc('src/voice/nativeEmotion.js');
+const emoMod = await loadSrcFile('src/voice/nativeEmotion.js');
 const { NATIVE_EMOTION, nativeSpeechParams } = emoMod;
-const provMod = await loadSrc('src/config/providers.js');
+const provMod = await loadSrcFile('src/config/providers.js');
 const { findTTS, TTS_PROVIDERS } = provMod;
 
 let fail = 0;

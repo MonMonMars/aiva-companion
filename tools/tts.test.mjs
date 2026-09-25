@@ -6,14 +6,17 @@
  *
  * 用法： node tools/tts.test.mjs
  */
-import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadSrc } from './lib/loadSrc.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const tmp = path.join(root, 'tools', '.tmp-tts.mjs');
-fs.copyFileSync(path.join(root, 'src', 'voice', 'tts.js'), tmp);
-const { splitByEmotion, stripEmotionTags, EMOTIONS } = await import('file://' + tmp.replace(/\\/g, '/'));
+// 项目没有 type:module，src 下的 .js 没法直接 import —— 临时复制成 .mjs 再加载。
+// 走 lib/loadSrc.mjs 那个 helper：副本放在源码同目录，相对 import 的基准才不会错位
+// （放到 tools/ 下会让 `../lib/netFetch` 解析成 `<root>/lib/netFetch`，
+//   2026-09-25 给 tts.js 加超时兜底时踩到的）。
+const { splitByEmotion, stripEmotionTags, EMOTIONS } =
+  await loadSrc(root, 'src/voice/tts.js');
 
 let fail = 0;
 const ck = (cond, label, extra = '') => {
@@ -90,6 +93,6 @@ for (const e of EMOTIONS) {
   ck(ok, `[${e.tag}] 三家都有对应配置`, ok ? '' : JSON.stringify(e));
 }
 
-fs.unlinkSync(tmp);
+// 临时副本由 lib/loadSrc.mjs 自己清理（在 finally 里），这里不用管。
 console.log(fail === 0 ? '\n全部通过 ✓' : `\n失败 ${fail} 项 ✗`);
 process.exit(fail === 0 ? 0 : 1);

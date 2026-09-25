@@ -7,6 +7,13 @@
 //     Azure 支持 SSML 官方风格；ElevenLabs 靠参数微调。三家路子不同，下面分别适配。
 //  3. **非语言声**：[laughs] 这种标记，要真的转换出笑声，而不是念出"中括号 laugh"这几个字。
 
+import { netFetch } from '../lib/netFetch';
+
+// ⚠️ 下面合成请求一律走 netFetch，不用裸 fetch：合成这一步挂在会话的 await 链上，
+//    挂起时 state 会永久停在 'speaking'（useVoice 的 isBusy 就此锁死，
+//    连「打断」和「再来一句」都点不动）。30 秒上限保证它至少一定会返回结果，
+//    哪怕是失败 —— 失败会走本地 espeak 兜底，比卡死强得多。
+
 // ---------------------------------------------------------------------------
 // 情绪表：这个 Tag 在三家里分别怎么表达
 // ---------------------------------------------------------------------------
@@ -102,7 +109,7 @@ async function openaiTTS({ text, emotion, cfg }) {
       || undefined;
   }
 
-  const res = await fetch('https://api.openai.com/v1/audio/speech', {
+  const res = await netFetch('https://api.openai.com/v1/audio/speech', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
     body: JSON.stringify(body),
@@ -140,7 +147,7 @@ async function azureTTS({ text, emotion, cfg }) {
   if (!key || !region) throw new Error('缺 Azure Key 或区域');
 
   const ssml = buildAzureSSML({ text, emotion, cfg });
-  const res = await fetch(`https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
+  const res = await netFetch(`https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
     method: 'POST',
     headers: {
       'Ocp-Apim-Subscription-Key': key,
@@ -152,7 +159,7 @@ async function azureTTS({ text, emotion, cfg }) {
   if (!res.ok) {
     // Azure 最常见的失败：该发音人不支持这个 style。降级重来一次，别让用户听到报错。
     if (res.status === 400 && cfg.allowStyle) {
-      const retry = await fetch(`https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
+      const retry = await netFetch(`https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
         method: 'POST',
         headers: {
           'Ocp-Apim-Subscription-Key': key,
@@ -180,7 +187,7 @@ async function elevenTTS({ text, emotion, cfg }) {
   // 另外它是逐字的，所以唱歌要在文本层面给他一点韵律提示。
   const input = emotion === 'sing' ? `♪ ${text} ♪` : text;
 
-  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${cfg.voice}`, {
+  const res = await netFetch(`https://api.elevenlabs.io/v1/text-to-speech/${cfg.voice}`, {
     method: 'POST',
     headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
     body: JSON.stringify({

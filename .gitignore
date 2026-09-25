@@ -50,6 +50,10 @@ tools/.chrome-profile/
 #    只写 .chrome-profile/ 的话这些变体每次都会脏工作区，所以按前缀整体忽略。
 tools/.chrome-profile*/
 tools/.tmp-*.mjs
+# ⚠️ 2026-09-25：tools/lib/loadSrc.mjs 加载 src 源码时，副本是**放在源码同目录**的
+#    （放 tools/ 下会让源码里的相对 import 解析错位），掉进过 src/voice/.tmp-*.mjs。
+#    正常情况下 finally 会删掉，只有进程崩溃才有残留 —— 那种痕迹不该脏工作区。
+.tmp-*.mjs
 tools/.dbg.mjs
 *.log
 
