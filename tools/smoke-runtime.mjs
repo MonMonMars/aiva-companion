@@ -189,13 +189,22 @@ try {
     await sleep(1200);
   }
 
-  const partCount = await ev('globalThis.__aivaDebug?.partCount ?? -1');
+  // ⚠️ 这几个在 __aivaDebug 上都是**函数**，不调用就拿到函数本身，
+  //    returnByValue 会把它序列化成 `{}` —— 打出来看着像"部件数为 0 / 模型没挂上"，
+  //    其实什么都没测（真被这行骗过一次：白追了两轮去查 CI 上 GLB 有没有加载）。
+  //    要值，就在页面里先调用再返回。
+  const model = await ev(`(() => {
+    const d = globalThis.__aivaDebug;
+    if (!d) return null;
+    const call = (f) => { try { return typeof f === 'function' ? f() : null; } catch (e) { return 'ERR:' + e.message; } };
+    return { partCount: call(d.partCount), hasRig: call(d.hasRig), hasFace: call(d.hasFace) };
+  })()`);
 
   console.log(`产物目录：${path.relative(ROOT, DIST)}`);
   console.log(`root 子节点数：${nodes}`);
   console.log(`未捕获异常：${exceptions.length}`);
   console.log(`console error：${errors.length}`);
-  console.log(`进入 Home：${reachedHome ? '是' : '否'}   模型部件数 partCount=${JSON.stringify(partCount)}`);
+  console.log(`进入 Home：${reachedHome ? '是' : '否'}   模型：${JSON.stringify(model)}`);
   for (const e of exceptions.slice(0, 5)) console.log(`  [EXC] ${String(e).slice(0, 200)}`);
   for (const e of errors.slice(0, 5)) console.log(`  [err] ${e}`);
 
