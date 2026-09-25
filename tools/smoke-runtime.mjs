@@ -109,15 +109,35 @@ let ws;
 try {
   let page = null;
   let lastErr = '（一次都没请求过）';
-  for (let i = 0; i < 40 && !page; i++) {
+  // ⚠️ 这个上限原来是我随手写的 40×400ms = 16 秒，CI #41 就栽在它上面：
+  //    那次 bundle 结束到 smoke-runtime 报错隔了 **16.115 秒**（日志时间戳量的），
+  //    差 0.1 秒 = 循环把 16 秒**空等满了**，而 chromeGone 为空（Chrome 没退），
+  //    于是只能断成「进程活着、但调试端口 16 秒内没开」—— 启动慢，不是崩了。
+  //    同一段代码在 #42 上 13.3 秒就整步跑完。**会随机变红的闸门比没有闸门更糟**：
+  //    它教会所有人「红了就重跑一次」。所以上限放宽到 60 秒，并且把实际等了多久
+  //    打出来 —— 以后每次运行都留一个数，下次再飘不用靠猜。
+  const MAX_TRIES = 150;              // 150 × 400ms = 60 秒
+  const t0 = Date.now();
+  let tries = 0;
+  for (let i = 0; i < MAX_TRIES && !page; i++) {
     await sleep(400);
-    // Chrome 已经自己退了就别把 16 秒空等满 —— 早点进诊断分支，早拿到原因
-    if (chromeGone) break;
+    tries = i + 1;
+    // Chrome 已经自己退了就别把 60 秒空等满 —— 早点进诊断分支，早拿到原因。
+    // spawn 失败（可执行文件不存在 / 没权限）同理：连进程都没起来，等也没用。
+    if (chromeGone || chromeSpawnErr) break;
     try {
       const l = await (await fetch(`http://127.0.0.1:${PORT + 1}/json/list`)).json();
       page = l.find((t) => t.type === 'page');
     } catch (e) {
       lastErr = `${e?.name || 'Error'}: ${e?.message || e}`;
+    }
+  }
+  const waited = ((Date.now() - t0) / 1000).toFixed(1);
+  if (page) {
+    // 起得慢本身就是要留的证据：这次慢，下次可能就是那 0.1 秒之差。
+    console.log(`[smoke-runtime] Chrome 调试端口 ${waited}s 后打开（轮询 ${tries} 次）`);
+    if (Date.now() - t0 > 10000) {
+      console.log(`[smoke-runtime] ⚠️ Chrome 起得慢（${waited}s）—— 这类抖动会让这一步随机变红，留意`);
     }
   }
   if (!page) {
@@ -127,9 +147,16 @@ try {
       `  可执行文件  ：${CHROME}`,
       `  调试端口    ：${PORT + 1}（静态服务器在 ${PORT}）`,
       `  用户数据目录：${profile}`,
+      `  已经等了    ：${waited}s（上限 ${(MAX_TRIES * 400) / 1000}s，轮询 ${tries} 次）`,
       `  最后一次请求：${lastErr}`,
       `  spawn 错误  ：${chromeSpawnErr ? chromeSpawnErr.message : '无'}`,
-      `  进程状态    ：${chromeGone ? `已退出 code=${chromeGone.code} signal=${chromeGone.signal ?? '无'}` : '仍在运行，但调试端口一直没开'}`,
+      // ⚠️ 别在 spawn 已经失败的情况下还写「仍在运行」—— 那句会让人以为 Chrome
+      //    起来了、只是端口没开，往完全相反的方向查（实测打印过一次，差点被骗）。
+      `  进程状态    ：${chromeSpawnErr
+        ? '没起来（spawn 就失败了，等也没用）'
+        : chromeGone
+          ? `已退出 code=${chromeGone.code} signal=${chromeGone.signal ?? '无'}`
+          : '仍在运行，但调试端口一直没开'}`,
       '  ---- Chrome 的 stdout+stderr（末 40 行）----',
       ...chromeLog.join('').split('\n').slice(-40).map((l) => '  ' + l),
     ].join('\n'));
