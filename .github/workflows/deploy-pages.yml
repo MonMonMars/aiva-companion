@@ -193,14 +193,15 @@ jobs:
 
       - id: deployment
         uses: actions/deploy-pages@v4
-        with:
-          # ★ 让这一步自己把 Pages 打开。
-          #   不加的话，首次运行（Pages 还没在仓库里启用）会直接失败：
-          #     Get Pages site failed. Error: HttpError: Not Found
-          #   因为「开仓库」和「开 Pages」是两个独立开关，
-          #   调 API 建仓库不会顺带把 Pages 打开，且空仓库上发
-          #   build_type=workflow 的启用请求会返回 409 —— Pages 会一直关着。
-          enablement: true
+        # 这里原来挂着 `enablement: true`，注释说「让这一步自己把 Pages 打开」。
+        # ⚠️ **实测那条注释是错的**：v4 已经不接受这个输入了 —— 每次部署都会打
+        #    `Unexpected input(s) 'enablement', valid inputs are ['token','timeout',
+        #    'error_count','reporting_interval','artifact_name','preview']`，
+        #    也就是它一直被**静默忽略**，从来没起过作用。
+        #    所以 Pages 得先在仓库里手动开：Settings → Pages → Source 选
+        #    「GitHub Actions」。没开的话这一步会报
+        #      Get Pages site failed. Error: HttpError: Not Found
+        #    ——「开仓库」和「开 Pages」是两个独立开关，调 API 建仓库不会顺带开 Pages。
       - name: 打印网址
         run: echo "Pages 网址 = ${{ steps.deployment.outputs.page_url }}"
 
