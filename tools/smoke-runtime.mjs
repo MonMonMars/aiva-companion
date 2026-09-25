@@ -235,9 +235,19 @@ try {
 
   // ---- 断言 4：标题页 → 角色选择 → Home ----
   // 每一屏的停留都给足时间（软渲染 + 首包解析，实测要十几秒）
+  // ⚠️ 余量记录（CI #46 实测，本地那列是同一次本地跑的）：
+  //      段          本地      CI      上限        余量
+  //      Chrome 端口 0.4s     1.0~6.7s  60s       ≈9x   ← #41 在 16s 上限上被捅穿过
+  //      React 挂载  0.7s     0.7s      21s       ≈30x  ← 厚，不用管
+  //      走到 Home   5.2s     7.4s      ~21s(12轮) ≈3x  ← 和捅穿那个同一量级，盯着
+  //      模型挂上    0.0s     0.0s      25s       ∞     ← 走到 Home 时早就挂好了
+  //    所以只把「走到 Home」的**轮数**也打出来：它是余量最薄的一段，
+  //    而轮数比秒数更能说明问题（一轮 ≈ 2.5s，现在只用 3 轮 / 上限 12 轮）。
   const tHome0 = Date.now();
   let reachedHome = false;
+  let homeRounds = 0;
   for (let round = 0; round < 12 && !reachedHome; round++) {
+    homeRounds = round + 1;
     if (await ev('!!(globalThis.__aivaDebug)')) {
       reachedHome = true;
       break;
@@ -294,7 +304,7 @@ try {
   const tModel = ((Date.now() - tModel0) / 1000).toFixed(1);
   // 失败时走的是「末 40 行」整段，所以单独打一行（含上限，好对照余量）；
   // 成功时靠末尾那句总结 —— 那边只留 6 行，塞不进别处。
-  const TIMING = `端口 ${waited}s｜挂载 ${tMount}s/21s｜Home ${tHome}s｜模型 ${tModel}s/25s`;
+  const TIMING = `端口 ${waited}s｜挂载 ${tMount}s/21s｜Home ${tHome}s/${homeRounds}轮(上限12)｜模型 ${tModel}s/25s`;
 
   console.log(`产物目录：${path.relative(ROOT, DIST)}`);
   console.log(`各段耗时：${TIMING}`);
