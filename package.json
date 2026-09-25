@@ -29,7 +29,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "export:web": "expo export --platform web",
-    "lint": "node tools/lint-imports.mjs . && node tools/lint-styles.mjs .",
+    "lint": "node tools/lint-imports.mjs . && node tools/lint-styles.mjs . && node tools/lint-net-calls.mjs",
     "test": "node tools/check-persona-coverage.mjs && node tools/test-with-timeout.mjs && node --import ./tools/ext-resolve.mjs tools/test-auth-timeout.mjs && node --import ./tools/ext-resolve.mjs tools/test-net-timeout.mjs && node tools/nativeSpeech.test.mjs && node tools/espeak.test.mjs && node tools/tts.test.mjs && node tools/songs.test.mjs && node tools/pipeline.test.mjs && node --import ./tools/ext-resolve.mjs tools/test-rig-semantics.mjs && node tools/inspect-character.mjs && node tools/test-realistic-pipeline.mjs",
     "verify:models": "node tools/inspect-character.mjs && node tools/test-realistic-pipeline.mjs",
     "verify:lips": "node tools/verify-lips.mjs"

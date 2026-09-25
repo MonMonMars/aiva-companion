@@ -70,6 +70,11 @@ jobs:
           run "rig-semantics" node --import ./tools/ext-resolve.mjs tools/test-rig-semantics.mjs
           run "inspect-character" node tools/inspect-character.mjs
           run "realistic-pipeline" node tools/test-realistic-pipeline.mjs
+          run "lint-imports" node tools/lint-imports.mjs .
+          # 这条盯的是「对外请求有没有走 netFetch」—— 同一个漏兜底的 bug
+          # 已经在 auth / database / STT/TTS / llm / web / region 六处出现过，
+          # 光靠"下次记得"守不住，必须在 CI 上跑。
+          run "lint-net-calls" node tools/lint-net-calls.mjs
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
           exit $fails

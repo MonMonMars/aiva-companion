@@ -8,6 +8,10 @@
 // 3) 没有 API Key 时用本地兜底引擎，让 App 开箱即可体验（不会白错误一堆给用户看）
 
 import { getPersona, levelFromAffection, LEVEL_TITLES, pick } from './theme';
+import { netFetch, NET_TIMEOUT_CODE } from './netFetch';
+
+/** 单个对话请求的等待上限。比 netFetch 默认的 30 秒宽 —— LLM 要吐完整一段话 */
+const LLM_TIMEOUT_MS = 45000;
 
 // 把当前养成状态注入 system prompt，让 AI 的语气跟着关系走
 export function buildSystemPrompt(personaId, snap) {
@@ -69,9 +73,11 @@ export async function requestCompletion({ config, messages, temperature = 0.9, t
   }
 
   const url = `${baseUrl}/chat/completions`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 45000);
-
+  // 为什么走 netFetch 而不是自己 new AbortController：
+  //   只发 AbortSignal 的话，**要对方的 fetch 实现搭理它**才会 reject —— RN 某个平台
+  //   装聋时 await 就永不落定，而这里的调用方正等着回复做转圈 / 打字机。
+  //   netFetch 是「signal 掐请求 + Promise.race 保证一定返回结果」两层，缺一层等于没加。
+  // LLM 回一整段话本来就慢，所以上限比 netFetch 默认的 30 秒再放宽到 45 秒。
   try {
     const body = {
       model: config.model,
@@ -89,12 +95,11 @@ export async function requestCompletion({ config, messages, temperature = 0.9, t
     const headers = { 'Content-Type': 'application/json' };
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
-    const res = await fetch(url, {
+    const res = await netFetch(url, {
       method: 'POST',
-      signal: controller.signal,
       headers,
       body: JSON.stringify(body),
-    });
+    }, LLM_TIMEOUT_MS);
 
     const text = await res.text();
 
@@ -126,10 +131,9 @@ export async function requestCompletion({ config, messages, temperature = 0.9, t
       toolCalls: Array.isArray(msg.tool_calls) && msg.tool_calls.length ? msg.tool_calls : undefined,
     };
   } catch (e) {
-    if (e?.name === 'AbortError') return { ok: false, error: '请求超时（45s）' };
+    // 超时是 netFetch 给的带 code 的错误（它可能来自 race，也可能来自被 abort 的 fetch）
+    if (e?.code === NET_TIMEOUT_CODE) return { ok: false, error: `请求超时（${LLM_TIMEOUT_MS / 1000}s）` };
     return { ok: false, error: e?.message || '网络请求失败' };
-  } finally {
-    clearTimeout(timer);
   }
 }
 

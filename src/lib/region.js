@@ -35,6 +35,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as S from '../store';
+import { netFetch } from './netFetch';
 
 // ---------------------------------------------------------------------------
 // 地区名单
@@ -90,22 +91,20 @@ const GEO_TTL = 7 * 24 * 3600 * 1000; // 缓存 7 天，别每次开 App 都去�
 let geoCache = null; // { cc, ts, src }
 let pending = null;
 
-/** 给 fetch 套一个超时。RN 的 fetch 不认 AbortSignal 时也能靠 Promise.race 兜住 */
-function withTimeout(ms) {
-  const ctl = typeof AbortController === 'function' ? new AbortController() : null;
-  const t = ctl ? setTimeout(() => ctl.abort(), ms) : null;
-  return { signal: ctl?.signal, done: () => t && clearTimeout(t) };
-}
-
+/**
+ * 取一段文本，取不到就当没取到。
+ *
+ * 超时交 netFetch：它里边是「signal 掐请求 + Promise.race」两层。
+ * ⚠️ 这个文件以前自己写了个同名的 withTimeout，注释写着"RN 的 fetch 不认
+ *    AbortSignal 时也能靠 Promise.race 兜住"—— **但那句注释是假的**，
+ *    代码里从头到尾没有一个 race，只发了 signal。某个平台装聋时，
+ *    下面这个 await 就永不落定：国家探测停在半路，`pending` 再也不会清空，
+ *    之后每一次 detectCountry() 都拿回同一个永远不返回的 promise。
+ */
 async function getText(url, ms) {
-  const { signal, done } = withTimeout(ms);
-  try {
-    const res = await fetch(url, { signal });
-    if (!res.ok) return '';
-    return await res.text();
-  } finally {
-    done();
-  }
+  const res = await netFetch(url, {}, ms);
+  if (!res.ok) return '';
+  return res.text();
 }
 
 /** 三个源都实测过带 `Access-Control-Allow-Origin: *`，浏览器里能直接读 */

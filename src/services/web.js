@@ -4,6 +4,8 @@
 // 天气走 Open-Meteo —— **完全免费且不需要 Key**，还自带中文天气描述,
 // 比让大模型瞎猜靠谱得多（它不知道今天到底几度）。
 
+import { netFetch, NET_TIMEOUT_CODE } from '../lib/netFetch';
+
 /**
  * 统一的搜索结果
  * @typedef {{title:string, url:string, snippet:string, published?:string}} SearchHit
@@ -12,10 +14,12 @@
 const TIMEOUT_MS = 20000;
 
 async function req(url, { method = 'GET', headers, body } = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  // 走 netFetch 而不是自己 new AbortController：只发 AbortSignal 的话，
+  // 得对方的 fetch 实现真的搭理它才会 reject（RN 某些平台上不一定），
+  // 那种情况下 await 永不落定 —— 超时就成了摆设。netFetch = signal 掐请求
+  // + Promise.race 保证一定返回结果，两层缺一不可。
   try {
-    const res = await fetch(url, { method, headers, body, signal: controller.signal });
+    const res = await netFetch(url, { method, headers, body }, TIMEOUT_MS);
     const text = await res.text();
     let json = null;
     try {
@@ -27,10 +31,9 @@ async function req(url, { method = 'GET', headers, body } = {}) {
     }
     return json ?? text;
   } catch (e) {
-    if (e?.name === 'AbortError') throw new Error('搜索超时（20s）');
+    // 超时是 netFetch 给的带 code 的错误；原先这里判 AbortError 的那套已经不适用了
+    if (e?.code === NET_TIMEOUT_CODE) throw new Error(`搜索超时（${TIMEOUT_MS / 1000}s）`);
     throw e;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
