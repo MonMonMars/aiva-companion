@@ -303,14 +303,61 @@ for (const id of ['girlfriend', 'boyfriend', 'secretary']) {
     const drivenMesh = handle.lookup.jawOpen?.mesh;
     check(!!drivenMesh, 'jawOpen 找到了它所在的网格');
 
+    // ★「嘴部」到底指哪些形状？取**口型系统真正会写进去的那批**，
+    //   而不是按名字猜（jaw*/mouth*）—— 手列的名单迟早和驱动表对不上。
+    //   做法：在这句中文和那句英文上各采几个时间点，把出现的形状名并起来。
+    const mouthKeys = new Set();
+    for (const seq of [frames, en]) {
+      const d = visemesDuration(seq);
+      for (const k of [0, 0.25, 0.5, 0.75, 1]) {
+        for (const name of Object.keys(sampleViseme(seq, d * k))) mouthKeys.add(name);
+      }
+    }
+    const dict = drivenMesh?.morphTargetDictionary || {};
+    const at = (keys) => [...keys].map((k) => dict[k]).filter((i) => typeof i === 'number');
+    const mouthIdx = at(mouthKeys);
+    check(mouthIdx.length > 0, '口型驱动的形状都在网格的 morph 表里', [...mouthKeys].join(','));
+
+    // ★★ 关键：表情通道**也会写嘴**，所以不能拿它当闸门。
+    //    EMOTION_FACE 里 laughs 有 jawOpen 0.25、surprised 有 jawOpen 0.5、
+    //    gentle 有 mouthSmile 0.4；而待机姿势调度器**随机**换姿势，
+    //    换到带 face 的姿势时就 `setFaceEmotion(pose.face)`，嘴立刻带上笑脸。
+    //    所以「嘴部权重归零」只要量到 jawOpen / mouthSmile*，就一定会飘 ——
+    //    实测 40 次红 5 次，残量 0.008 / 0.238 / 0.249 / 0.266 / 0.362 / 0.368 /
+    //    0.451 连续分布（取决于采样那一刻笑脸衰减到哪）。
+    //    只认**只有口型会写、表情从不写**的那批形状，这条断言才既干净又有牙齿。
+    const emoKeys = new Set();
+    for (const d of Object.values(EMOTION_FACE)) for (const k of Object.keys(d)) emoKeys.add(k);
+    const speechKeys = [...mouthKeys].filter((k) => !emoKeys.has(k));
+    const speechIdx = at(speechKeys);
+    check(
+      speechIdx.length > 0,
+      '存在"只有口型会写"的形状（否则这条断言是空的）',
+      speechKeys.join(',')
+    );
+
+    // ⚠️ 时间线必须**接着上面走**，不能跳（原先这里是 10 + i*0.016 这种跳法）：
+    //    speak() 用 clock.t（上一次 update 的时间）当口型起点，跳一大段的话
+    //    lips 里 local = t - startedAt 一上来就超过句子时长，
+    //    口型当场被判定"已经说完了"，根本不会播 —— 而旧的「嘴在动」断言照样
+    //    能过（待机姿势的笑脸也在写 mouthSmile），于是这条一直**没有牙齿**。
+    let tt = 1 + 90 * 0.016;
     comp.speak('你好，我叫小满', { emotion: 'gentle' });
     let peak = 0;
-    for (let i = 0; i < 90; i++) {
-      comp.update(10 + i * 0.016, 0.016);
+    // ⚠️ 只推进 30 帧（0.48 秒）就打断 —— 这句有 2.58 秒，这时候正说到一半。
+    //    要是等它自己说完，lips 里 `local > dur + 0.15` 也会自动把 speaking
+    //    置回 false，嘴照样闭上 —— 那就算 stopSpeaking 整个空掉，这条断言
+    //    也照样绿（实测过：退出码 0，等于没验）。**打断必须在句子中间。**
+    for (let i = 0; i < 30; i++) {
+      comp.update((tt += 0.016), 0.016);
       const inf = drivenMesh?.morphTargetInfluences || [];
-      for (const v of inf) if (v > peak) peak = v;
+      for (const j of speechIdx) if ((inf[j] || 0) > peak) peak = inf[j];
     }
-    check(peak > 0.05, 'speak 之后有 morph 权重被推动（嘴真的在动）', `峰值 ${peak.toFixed(3)}`);
+    check(
+      peak > 0.05,
+      'speak 之后口型通道真的在驱动嘴（不是靠表情混过去的）',
+      `峰值 ${peak.toFixed(3)}`
+    );
 
     // 说话时必须张嘴：jawOpen 或 mouthClose 至少一个在表里
     const jawI = drivenMesh?.morphTargetDictionary?.jawOpen;
@@ -318,11 +365,43 @@ for (const id of ['girlfriend', 'boyfriend', 'secretary']) {
     check(jawI !== undefined || closedI !== undefined, '嘴部形状在驱动表里');
 
     // 说完/打断后必须闭嘴
+    //
+    // ⚠️ 这里原先写的是 `Math.max(...infAfter)` —— **对全部 influences 取最大值**，
+    //    于是这条叫「嘴部权重」的断言把**表情通道**也算了进去（见上面 emoKeys
+    //    那段）。表情由**随机**换的待机姿势挂上来，于是它大概每 8 次红 1 次，
+    //    而且红的时候打的是「残量 0.451」，看着像嘴没闭上 ——
+    //    其实嘴早就闭上了，是她正好在笑。
+    //    CI #37 那次偶发失败就是这个。当时只在**测试脚本**里找
+    //    Math.random / Date.now，没往**组件**里找（随机在 poseScheduler 里），
+    //    于是判定"未复现"。一个会随机变红的闸门比没有闸门更糟 ——
+    //    它教会所有人「红了就重跑一次」。
+    //    现在只统计口型独有形状；另外把"全部嘴部 / 全部形状的最大值"打出来当旁证，
+    //    下次再飘一眼能看出到底是谁在动。
     comp.stopSpeaking();
-    for (let i = 0; i < 60; i++) comp.update(20 + i * 0.016, 0.016);
+    // 打断之后再走 12 帧（约 0.2 秒）：morph 是"每帧全量重写 + 先清零"的，
+    //    所以停掉之后**下一帧**就该干净；给 12 帧是留余量，不是为了等衰减。
+    for (let i = 0; i < 12; i++) comp.update((tt += 0.016), 0.016);
     const infAfter = drivenMesh?.morphTargetInfluences || [];
-    const maxAfter = infAfter.length ? Math.max(...infAfter) : 0;
-    check(maxAfter < 0.35, 'stopSpeaking 后嘴部权重回落到静止', `残量 ${maxAfter.toFixed(3)}`);
+    let maxSpeech = 0, speechName = '（无）';
+    for (const k of speechKeys) {
+      const v = infAfter[dict[k]] || 0;
+      if (v > maxSpeech) { maxSpeech = v; speechName = k; }
+    }
+    let maxMouth = 0, mouthName = '（无）';
+    for (const k of mouthKeys) {
+      const v = infAfter[dict[k]] || 0;
+      if (v > maxMouth) { maxMouth = v; mouthName = k; }
+    }
+    let maxAny = 0, anyName = '（无）';
+    for (const [k, j] of Object.entries(dict)) {
+      const v = infAfter[j] || 0;
+      if (v > maxAny) { maxAny = v; anyName = k; }
+    }
+    check(
+      maxSpeech < 0.05,
+      'stopSpeaking 后口型通道归零（嘴不再被话推着动）',
+      `口型最大 ${maxSpeech.toFixed(3)}（${speechName}）；全部嘴部最大 ${maxMouth.toFixed(3)}（${mouthName}）；全部形状最大 ${maxAny.toFixed(3)}（${anyName}）`
+    );
 
     // 情绪表要覆盖 TTS 的全部标签，否则某些情绪会没有表情
     check(Object.keys(EMOTION_FACE).length >= 15, `表情表覆盖 ${Object.keys(EMOTION_FACE).length} 种情绪`);

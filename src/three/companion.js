@@ -491,6 +491,17 @@ export function createCompanionScene(persona) {
    * @param {number} dt 帧间隔（秒）
    */
   function update(t, dt) {
+    // ⚠️ clock.t 必须跟着走 —— speak() 拿它当口型的时间起点（startedAt = clock.t）。
+    //    以前它只在上面声明、**从来没被写过**，恒为 0，于是 lips 里
+    //      local = t - startedAt = t - 0 = 累计秒数
+    //    开 App 两秒之后 local 就远大于句子时长，`local > dur + 0.15` 当场成立，
+    //    口型被判定"已经说完了" —— 也就是**嘴从头到尾没跟着话动过**。
+    //    看画面看不出来：sighs / laughs 这些**表情**通道还在动，嘴也会因为
+    //    待机姿势的笑脸而开合，所以没人发现。
+    //    （是 CI #37 的偶发失败一路追出来的：那条断言实测每 8 次红 1 次，
+    //     查下去才发现它量到的"嘴"根本不是口型通道在动。）
+    clock.t = t;
+
     // 阻尼 / 回弹
     bounce *= Math.pow(0.0025, dt);        // ~0.86/帧 @60fps
     headTiltTarget *= Math.pow(0.02, dt);
@@ -597,7 +608,12 @@ export function createCompanionScene(persona) {
     // --- 表情 + 口型 -----------------------------------------------------
     // 放在骨架之后的最后一步：它只写 morphAttributes，和骨骼旋转互不干扰。
     // 眨眼也走这个出口，避免眨眼和口型两处同时写 eyeBlink 打架。
-    if (lips) lips.update(t, dt, { blinkScale: eyeScale });
+    //
+    // ⚠️ 这里原来写的是 `{ blinkScale: eyeScale }`，而 lipSync 那边解的是
+    //    `const { blink: blinkScale } = s` —— **名字对不上**，于是 blink 永远是 1，
+    //    眨眼对真模型**从来没有生效过**（只有程序化角色那条 e.scale.y 在动）。
+    //    上面那句注释说的"走这个出口"其实一直是空话。
+    if (lips) lips.update(t, dt, { blink: eyeScale });
 
     // MakeHuman 档：表情是**写在骨头上**的（jaw / orbicularis / risorius …），
     // 所以必须排在 rig.update 之后 —— 先让姿势定好头颈，再把表情叠上去。

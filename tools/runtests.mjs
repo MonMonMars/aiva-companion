@@ -88,6 +88,14 @@ STEPS.push(['lint-ci-refs-teeth', ['tools/test-lint-ci-refs-teeth.mjs', '.']]);
 // ⚠️ 它要再 boot 一次 Chrome 并耗满 25 秒轮询，所以放在最后 —— 打包产物留到最后
 // 才清理，正好够它用。
 STEPS.push(['smoke-runtime-teeth', ['tools/test-smoke-runtime-teeth.mjs', '.']]);
+// 第 21 步验的是第 9 步「口型」那两条断言**自己有没有牙齿**：
+// 造两处真出过的事故（clock.t 不更新 → 嘴根本不动；stopSpeaking 不真的停 →
+// 打断后嘴继续动），回头确认那两条真的会变红。
+// 常驻的理由和第 19 / 20 步一样：断言被放宽时「所有测试照旧全绿」是最容易
+// 出现的假象。写在注释里的「改完记得重跑」不会提醒任何人。
+// ⚠️ 它会临时改 src/three/companion.js 再还原（有 .bak 兜底 + try/finally），
+//    放在最后一步，免得改源码的这段时间里别的步骤也在读它。
+STEPS.push(['lipsync-teeth', ['tools/test-lipsync-teeth.mjs', '.']]);
 
 const TAIL = 40;
 let fails = 0;

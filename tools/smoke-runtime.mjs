@@ -84,24 +84,56 @@ await new Promise((r) => srv.listen(PORT, '127.0.0.1', r));
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const profile = path.join(process.env.TEMP || '/tmp', `smoke-${Date.now()}`);
+
+// ⚠️ 千万别图省事写 stdio:'ignore'（CI #41 上真吃到了这个亏）：
+//    那样 Chrome 启动失败时它自己打印的原因会被整个丢掉，只剩一句
+//    "连不上 Chrome" —— 一句说了等于没说的诊断比没有诊断更费事
+//    （排查时只能靠猜：是没装库？是沙箱？是端口被占？）。
+//    所以这里把 stdout/stderr 都接住（设个上限，别把内存吃爆）。
+const chromeLog = [];
+const keep = (b) => { if (chromeLog.length < 400) chromeLog.push(String(b)); };
 const chrome = spawn(CHROME, [
   '--headless=new', `--remote-debugging-port=${PORT + 1}`, `--user-data-dir=${profile}`,
   '--window-size=900,900', '--no-first-run', '--no-default-browser-check',
   '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
   '--ignore-gpu-blocklist', 'about:blank',
-], { stdio: 'ignore' });
+], { stdio: ['ignore', 'pipe', 'pipe'] });
+chrome.stdout.on('data', keep);
+chrome.stderr.on('data', keep);
+let chromeGone = null;      // Chrome 自己退了？记下 code / signal
+chrome.on('exit', (code, signal) => { chromeGone = { code, signal }; });
+let chromeSpawnErr = null;  // 连可执行文件都没起来（ENOENT 之类）
+chrome.on('error', (e) => { chromeSpawnErr = e; });
 
 let ws;
 try {
   let page = null;
+  let lastErr = '（一次都没请求过）';
   for (let i = 0; i < 40 && !page; i++) {
     await sleep(400);
+    // Chrome 已经自己退了就别把 16 秒空等满 —— 早点进诊断分支，早拿到原因
+    if (chromeGone) break;
     try {
       const l = await (await fetch(`http://127.0.0.1:${PORT + 1}/json/list`)).json();
       page = l.find((t) => t.type === 'page');
-    } catch {}
+    } catch (e) {
+      lastErr = `${e?.name || 'Error'}: ${e?.message || e}`;
+    }
   }
-  if (!page) throw new Error('连不上 Chrome');
+  if (!page) {
+    // 把**现场**一并打出来：下次再遇到，光看这一屏就能定位，不用再猜
+    throw new Error([
+      '连不上 Chrome',
+      `  可执行文件  ：${CHROME}`,
+      `  调试端口    ：${PORT + 1}（静态服务器在 ${PORT}）`,
+      `  用户数据目录：${profile}`,
+      `  最后一次请求：${lastErr}`,
+      `  spawn 错误  ：${chromeSpawnErr ? chromeSpawnErr.message : '无'}`,
+      `  进程状态    ：${chromeGone ? `已退出 code=${chromeGone.code} signal=${chromeGone.signal ?? '无'}` : '仍在运行，但调试端口一直没开'}`,
+      '  ---- Chrome 的 stdout+stderr（末 40 行）----',
+      ...chromeLog.join('').split('\n').slice(-40).map((l) => '  ' + l),
+    ].join('\n'));
+  }
 
   ws = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((r) => ws.addEventListener('open', r, { once: true }));

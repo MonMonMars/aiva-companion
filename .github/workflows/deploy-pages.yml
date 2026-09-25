@@ -124,6 +124,12 @@ jobs:
           # 确认前四条老断言照绿放行、只有「模型挂上」把得住。
           # 断言被放宽时「所有测试照旧全绿」是最容易出现的假象，所以让它常驻。
           run "smoke-runtime-teeth" node tools/test-smoke-runtime-teeth.mjs .
+          # 验第 9 步「口型」那两条断言自己有没有牙齿：造两处真出过的事故
+          # （clock.t 不更新 → 嘴从头到尾不动；stopSpeaking 不真的停 → 打断后
+          #   嘴继续动），回头确认那两条真的会变红。
+          # 断言被放宽时「所有测试照旧全绿」是最容易出现的假象，所以让它常驻。
+          # ⚠️ 它会临时改 src/three/companion.js 再还原（.bak 兜底 + try/finally）。
+          run "lipsync-teeth" node tools/test-lipsync-teeth.mjs .
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
           exit $fails
