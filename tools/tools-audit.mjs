@@ -1,8 +1,10 @@
 /**
  * tools/ 体检：哪些脚本还被引用着，哪些已经没人提了。
  *
- * 用法： node tools/tools-audit.mjs [--all]
+ * 用法： node tools/tools-audit.mjs [--all] [--detail]
  *       不带 --all 只打印「零引用」候选（归档要看的那一半）。
+ *       --detail 额外抓每个脚本头注释里的一句话说明 —— 光看文件名没法判断
+ *       它是「某次排障的临时探针」还是「以后还要用的验收工具」。
  *
  * ⚠️ 为什么要有它：靠「猜哪个没用」来删脚本一定会误伤。
  *    183 个入库脚本里只有 15 个被 package.json 引用，但剩下那些**不是**死代码 ——
@@ -21,6 +23,7 @@ import { execSync } from 'node:child_process';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const showAll = process.argv.includes('--all');
+const showDetail = process.argv.includes('--detail');
 
 const TEXT_EXT = new Set(['.js', '.mjs', '.cjs', '.json', '.md', '.yml', '.yaml', '.html', '.htm', '.sh', '.txt']);
 const SKIP_DIR = new Set(['node_modules', 'dist', '.git', 'assets', '.expo', '.shots-front', '.shots-admin', 'tmp', 'coverage']);
@@ -38,8 +41,12 @@ function walk(dir, out = []) {
 }
 
 // ---- 1. 入库的 tools 脚本 -------------------------------------------------
-const tracked = execSync('git ls-files tools', { cwd: root, encoding: 'utf8' })
-  .split('\n').filter(Boolean)
+const trackedAll = execSync('git ls-files tools', { cwd: root, encoding: 'utf8' })
+  .split('\n').filter(Boolean);
+// 已归档的不参与体检：它们本来就是「没人引用」才被移进去的，再列一遍纯属刷屏。
+const archived = trackedAll.filter((f) => f.startsWith('tools/archive/'));
+const tracked = trackedAll
+  .filter((f) => !f.startsWith('tools/archive/'))
   .map((f) => path.basename(f))
   .filter((f) => f.endsWith('.mjs') || f.endsWith('.js'))
   .sort();
@@ -94,6 +101,7 @@ console.log(`入库脚本：${tracked.length} 个`);
 console.log(`  有引用：${alive.length}`);
 console.log(`  零引用：${dead.length}  ← 归档候选`);
 console.log(`  被 package.json 直接引用：${rows.filter((r) => r.inPkg).length}`);
+console.log(`  已归档（tools/archive/，不参与体检）：${archived.length}`);
 
 if (showAll) {
   console.log('\n--- 有引用的（前 5 个引用源）---');
@@ -102,12 +110,44 @@ if (showAll) {
   }
 }
 
+// 头注释里的一句话说明。很多脚本第一行就写了「干什么用的 / 当时在查什么」，
+// 这比文件名靠谱得多 —— 名字里的 cdp-、mh- 只说明用的技术，不说明用途。
+function describe(name) {
+  let raw;
+  try { raw = fs.readFileSync(path.join(root, 'tools', name), 'utf8'); } catch { return ''; }
+  const head = raw.split('\n').slice(0, 40);
+  const lines = [];
+  for (const l of head) {
+    const t = l.replace(/^\s*(\/\*\*|\*|\/\/)?\s?/, '').replace(/\*\/\s*$/, '').trim();
+    if (t.length < 6) continue;
+    if (/^(import|export|const|let|var|function|async|require\(|\})/.test(t)) break;
+    if (/^[-=_*~#]+$/.test(t)) continue;
+    lines.push(t);
+    if (lines.join('').length > 90) break;
+  }
+  return lines.join(' / ').slice(0, 100);
+}
+
 console.log('\n--- 零引用候选（按名字排序）---');
 for (const r of dead) {
   const size = fs.existsSync(path.join(root, 'tools', r.name))
     ? Math.round(fs.statSync(path.join(root, 'tools', r.name)).size / 1024)
     : 0;
-  console.log(`  ${r.name}  (${size} KB)`);
+  const desc = showDetail ? describe(r.name) : '';
+  console.log(`  ${r.name}  (${size} KB)${desc ? '\n      ' + desc : ''}`);
+}
+
+// 按前缀分组：归档时按族一起决定比逐个勾选快，也更容易看出「这一整族是
+// 围绕某一次排障长出来的」。
+const groups = new Map();
+for (const r of dead) {
+  const g = r.name.split('-')[0].replace(/\.(mjs|js)$/, '');
+  if (!groups.has(g)) groups.set(g, []);
+  groups.get(g).push(r.name);
+}
+console.log('\n--- 零引用按前缀分组 ---');
+for (const [g, names] of [...groups].sort((a, b) => b[1].length - a[1].length)) {
+  console.log(`  ${g.padEnd(12)} ${String(names.length).padStart(2)} 个`);
 }
 
 // 一次性脚本（下划线开头，被 gitignore，只在本机）
