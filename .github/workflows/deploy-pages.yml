@@ -79,6 +79,11 @@ jobs:
           # 已经在 auth / database / STT/TTS / llm / web / region 六处出现过，
           # 光靠"下次记得"守不住，必须在 CI 上跑。
           run "lint-net-calls" node tools/lint-net-calls.mjs
+          # 这条补的是 CI build job 的盲区：它只导 web，
+          # 于是「原生端能不能打包」一直没人验证过 —— 而同一入口在原生是 830 个模块、
+          # web 只有 546（相差的都是只有打原生才走到的代码）。缺了成员实现
+          # （如 Avatar3D.native.js）时，web 打包照样全绿。
+          run "bundle(web+ios)" node tools/verify-bundle.mjs .
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
           exit $fails

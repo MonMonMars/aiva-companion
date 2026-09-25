@@ -32,7 +32,7 @@
     "lint": "node tools/lint-imports.mjs . && node tools/lint-styles.mjs . && node tools/lint-net-calls.mjs",
     "test": "node tools/runtests.mjs",
     "test:fast": "node tools/runtests.mjs --fast",
-    "verify:web-export": "node tools/verify-web-export.mjs",
+    "verify:bundle": "node tools/verify-bundle.mjs",
     "verify:models": "node tools/inspect-character.mjs && node tools/test-realistic-pipeline.mjs",
     "verify:lips": "node tools/verify-lips.mjs"
   },

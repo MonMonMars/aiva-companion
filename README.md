@@ -587,7 +587,7 @@ npm run lint          # 导入完整性 + 样式引用 + 对外请求是否走 n
 npm test              # 16 步全套（含 lint 三条 + 最后一次真打包）
 npm run test:fast     # 同上但跳过打包，省几十秒；别把它变成常态
 npm run export:web    # 打个 web 包到 dist/，用来在浏览器里看效果
-npm run verify:web-export   # 单独跑打包验证（产出写在 dist-localcheck/）
+npm run verify:bundle   # 单独跑打包验证（web + ios，产物不落盘）
 npm run verify:lips http://127.0.0.1:8130/   # 浏览器里真的说一句，截图比对口型
 ```
 
@@ -924,7 +924,7 @@ None of these files exist:
 |---|---|---|
 | `lint-imports` 新增第 C 项：相对 import/require **必须在磁盘上落地**（含平台变体 `.web.js`、资源扩展名、目录 index），挂了还会提示「也许你找的是 ./lib/netFetch.js」 | 2 | 退化实验：改回 `'./netFetch'`，如期报错并给出正确路径 |
 | 把根进入口 `index.js` / `App.js` 纳入扫描（walk 原本只从 `src/` 出发，入口这两层是盲区） | 2 | 退化实验：把 `App.js` 的 `'./src/theme'` 改成 `'./theme'`，如期变红 |
-| `tools/verify-web-export.mjs` + `runtests.mjs` 的第 16 步 | 3 | 退化实验：错误路径下本地 Metro **852ms 就失败**（热缓存 6 秒通过） |
+| `tools/verify-bundle.mjs` + `runtests.mjs` 的第 16 步 | 3 | 退化实验：错误路径下本地 Metro **852ms 就失败**（热缓存 6 秒通过） |
 
 ⚠️ 第 16 步的存在本身就是这节的结论：**别相信一套不含构建步骤的本地验证。**
 测试全绿只说明被测的东西没问题，说明不了没被测的东西。附成本高（几十秒），
@@ -938,6 +938,37 @@ None of these files exist:
 > 为什么这三处**没有**配运行时单测：保护逻辑本身住在 netFetch 里（那 18 条断言、
 > 含「装聋平台」那条都盯着它），而 lint 保证这三处确实走了 netFetch。
 > 分工明确 —— 一个测「机制对不对」，一个测「有没有接上」。
+
+### 6.12 只验 web 的盲区：原生端从来没被打包过
+
+6.11 的结论是「本地套装要包含构建」，但那个"构建"当时只有 web —— 因为 CI 的
+build job 只做 `expo export --platform web`。**于是"原生端能不能打包"从来没有被
+任何一步验证过**（哪怕那是这个 App 真正要装的形态）。
+
+补上之后的第一条实测数据说明了这不是洁癖：
+
+| 平台 | 模块数 | 说明 |
+|---|---|---|
+| web | 546 | 走 react-native-web |
+| iOS | 830 | 走真 react-native |
+
+**相差的 284 个模块，全是"只有打原生才会经过"的代码。**
+
+牙齿测试也做得干净：把 `Avatar3D.native.js` 临时移走 ——
+
+```
+v [web] 546 modules（3304ms）        ← 只看 web 的话，一切正常
+✗ [ios] 打包失败（1613ms）
+    Unable to resolve module ../components/Avatar3D from ... src\screens\Home.js
+```
+
+即：**缺了原生实现时，web 打包照样全绿**。所以第 16 步现在是 `verify-bundle.mjs`
+打 web + ios 两个平台，并同样挂在 CI 的 test job 上
+（ios 代表原生这一族：Metro 里 android 与 ios 共用 `.native.js` 解析链，
+单独再跑一个 android 只多 20 秒却几乎没有新增覆盖）。
+
+⚠️ 顺着这条再往前一步的话：**"打包过了"仍然只保证模块能解析，不保证运行时行为。**
+真机上的 GL 初始化、iOS 出声这类问题，这一步挡不住 —— 它们要的是另一套验证。
 
 ---
 

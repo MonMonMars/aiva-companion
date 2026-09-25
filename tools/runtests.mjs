@@ -48,10 +48,14 @@ const STEPS = [
 
 // CI 里真正对照的是两个 job：test（上面 15 步）和 build（导出 Web 静态包）。
 // 早期缺了这第 16 步，于是出现过「本地 15 步全绿 → CI build job 炸」
-// （就是 tools/verify-web-export.mjs 顶部记的那次）。**测试全绿不等于能打包**，
+// （就是 tools/verify-bundle.mjs 顶部记的那次）。**测试全绿不等于能打包**，
 // 所以默认带上；确实赶时间可以加 --fast 跳过，但别让跳过变成常态。
+//
+// 第 16 步现在打**两个平台**（web + ios）：CI 只导 web，而同一入口在原生是
+// 830 个模块、web 只有 546 —— 差的那批只有打原生才会走到，缺了成员实现
+// （如 Avatar3D.native.js）时 web 照样全绿。
 const FAST = process.argv.includes('--fast');
-if (!FAST) STEPS.push(['web-export', ['tools/verify-web-export.mjs', '.']]);
+if (!FAST) STEPS.push(['bundle(web+ios)', ['tools/verify-bundle.mjs', '.']]);
 
 const TAIL = 40;
 let fails = 0;
