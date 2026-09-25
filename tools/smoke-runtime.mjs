@@ -9,11 +9,15 @@
 //   2) 有没有未捕获异常（Runtime.exceptionThrown 的条数）
 //   3) 有没有 console error（ErrorBoundary 会把异常吞掉，只看页面看不出来）
 //   4) 能不能从标题页走到 Home（3D 场景句柄 __aivaDebug 是否出现）
+//   5) 模型真的挂上了没有（hasRig）—— 第 4 条只证明组件挂载，证明不了 GLB 加载成功
 //
-// ⚠️ 两个诚实的边界：
-//   - 本机才是跑得起来的地方：Chrome 路径、swiftshader 软渲染都依赖这台机器，
-//     所以这一步**只挂在本地套装里**，CI 上没加（加了就得先搞定 ubuntu 上的 Chrome）。
-//   - 它证明「boot 成功、能进主界面」，证明不了交互全对（那是 cdp-* 那批专项探针的事）。
+// ⚠️ 诚实的边界：
+//   - 早先写着「只在本地跑、CI 上没加」，后来**实测推翻了**：ubuntu runner 自带
+//     Chrome（/usr/bin/google-chrome → Google Chrome 153），swiftshader 软渲染也能跑
+//     （CI #33 起的 smoke-probe job）。但那个 job 现在挂着 continue-on-error，
+//     是**观察位不是闸门** —— 连绿几轮确认不飘之后才收进 test job。
+//   - 它证明「boot 成功、能进主界面、模型在」，证明不了交互全对
+//     （那是 cdp-* 那批专项探针的事）。
 //
 // 用法：node tools/smoke-runtime.mjs [项目根] [--dir dist-localcheck-web]
 import http from 'node:http';
@@ -189,16 +193,35 @@ try {
     await sleep(1200);
   }
 
+  // ---- 断言 5：模型真的挂上了 ----------------------------------------------
+  // 为什么必须有它：把产物里所有 .glb 改名藏起来重跑一遍，前四条**全部照绿** ——
+  //   网络 404 不走 Runtime.consoleAPICalled，所以「console error」也是 0；
+  //   __aivaDebug 只代表 Avatar3D.web **组件挂载了**，不代表 GLB 加载成功。
+  //   实测对照（同一套断言）：
+  //     .glb 都在 → {"partCount":53,"hasRig":true,"hasFace":true}
+  //     .glb 藏起 → {"partCount":0,"hasRig":false,"hasFace":false}   前四条依然全绿
+  //   所以"能走到 Home"和"Home 里真的有个人"是两件事，这条是唯一能分开它们的。
+  //
   // ⚠️ 这几个在 __aivaDebug 上都是**函数**，不调用就拿到函数本身，
-  //    returnByValue 会把它序列化成 `{}` —— 打出来看着像"部件数为 0 / 模型没挂上"，
+  //    returnByValue 会把它序列化成 `{}` —— 打出来看着像"部件数为 0"，
   //    其实什么都没测（真被这行骗过一次：白追了两轮去查 CI 上 GLB 有没有加载）。
   //    要值，就在页面里先调用再返回。
-  const model = await ev(`(() => {
+  const MODEL_EXPR = `(() => {
     const d = globalThis.__aivaDebug;
     if (!d) return null;
     const call = (f) => { try { return typeof f === 'function' ? f() : null; } catch (e) { return 'ERR:' + e.message; } };
     return { partCount: call(d.partCount), hasRig: call(d.hasRig), hasFace: call(d.hasFace) };
-  })()`);
+  })()`;
+
+  // ⚠️ 必须轮询等，不能读一次就下结论：__aivaDebug 挂上来只说明组件挂载完成，
+  //    几 MB 的 GLB 还在解析/绑定（软渲染下更慢）。读早了拿到 0 就是假红 ——
+  //    一个会随机变红的闸门比没有闸门更糟。给足 25 秒，等不到才算真没挂上。
+  let model = null;
+  for (let i = 0; i < 25; i++) {
+    model = await ev(MODEL_EXPR);
+    if (model && model.hasRig === true) break;
+    await sleep(1000);
+  }
 
   console.log(`产物目录：${path.relative(ROOT, DIST)}`);
   console.log(`root 子节点数：${nodes}`);
@@ -213,6 +236,9 @@ try {
     [exceptions.length === 0, '无未捕获异常'],
     [errors.length === 0, '无 console error'],
     [reachedHome, '能走到 Home'],
+    // 只认 hasRig，不认 partCount：部件数随版本变（现在 53），拿它当闸门迟早误报；
+    // hasRig 才是"模型真的加载并绑定成功"这件事本身。partCount 只打出来作旁证。
+    [model?.hasRig === true, '模型挂上'],
   ];
   const bad = checks.filter(([ok]) => !ok);
 

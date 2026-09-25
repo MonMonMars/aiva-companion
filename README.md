@@ -984,7 +984,7 @@ v [web] 546 modules（3304ms）        ← 只看 web 的话，一切正常
 6.12 留下了一条边界：`verify-bundle.mjs` 只保证模块能解析。白屏、boot 时抛异常、
 ErrorBoundary 把上千行的错吞成一句提示 —— 这些 Metro 打包全都发现不了。
 所以补了第 17 步 `smoke-runtime.mjs`：把打包产物在一个 headless Chrome 里
-**真的 boot 一遍**，断言四条全部可数的值（不靠截图）：
+**真的 boot 一遍**，断言五条全部可数的值（不靠截图）：
 
 | 断言 | 怎么数 |
 |---|---|
@@ -992,6 +992,7 @@ ErrorBoundary 把上千行的错吞成一句提示 —— 这些 Metro 打包全
 | 无未捕获异常 | `Runtime.exceptionThrown` 的条数 |
 | 无 console error | `Runtime.consoleAPICalled(type=error)` 的条数 |
 | 能走到 Home | 走完「标题页 → 角色卡 → 底部 CTA」后 `__aivaDebug` 是否出现 |
+| 模型挂上 | `hasRig()` 为真（轮询最多 25 秒，等 GLB 解析完再判） |
 
 ⚠️ **为什么要连 console 一起听** —— 牙齿测试里最能说明问题的一条：
 在 `index.html` 里塞一句 `throw new Error(...)`，结果是
@@ -1005,9 +1006,46 @@ root 子节点数：1        ← 挂载正常
 **只看「能不能走到 Home」会放行这条。** 页面看起来完全没事，恰恰是这个检查存在的理由。
 另一条牙齿测试（抽掉主 bundle）则证明确实区分得出白屏：`root 子节点数：0`。
 
-⚠️ 边界如实写明：**这一步只挂本地，没进 CI** —— Chrome 路径和 swiftshader
-软渲染都依赖这台机器，在 ubuntu runner 上能不能跑还得先验证。
-它证明「boot 成功、能进主界面」，证明不了交互全对（那是 `cdp-*` 那批专项探针的事）。
+#### 第五条「模型挂上」是怎么来的
+
+顺着老规矩再问一层：`__aivaDebug` 挂上来只说明 `Avatar3D.web` **组件挂载了**，
+说明不了 GLB 加载成功。于是做了个实验：**把产物里 29 个 `.glb` 全部改名藏起来**再跑一遍。
+
+| | `.glb` 都在 | `.glb` 全部藏起 |
+|---|---|---|
+| root 子节点数 | 1 ✅ | 1 ✅ |
+| 未捕获异常 | 0 ✅ | 0 ✅ |
+| console error | 0 ✅ | **0 ✅** |
+| 进入 Home | 是 ✅ | 是 ✅ |
+| partCount / hasRig | 53 / true | **0 / false** |
+
+**四条断言一条都没拦住。** 关键是 console error 也是 0 —— 网络 404 不走
+`Runtime.consoleAPICalled`，只走 `Network.loadingFailed`，光听 console 听不见。
+也就是说「资产整个没进产物」这类事故会一路绿着发布出去。
+
+补上第五条之后，同一场景变成 `FAIL — 模型挂上 没过`。
+⚠️ 它必须**轮询等**（最多 25 秒）而不是读一次就判：几 MB 的 GLB 在软渲染下
+解析要时间，读早了拿到 0 就是个会随机变红的闸门 —— 那比没有更糟。
+只认 `hasRig`、不认 `partCount`：部件数随版本变（现在 53），
+拿它当闸门迟早误报；`partCount` 只打出来当旁证。
+
+#### 顺带修掉一个「打印在骗人」的坑
+
+原来那行读的是 `globalThis.__aivaDebug?.partCount` 而**没调用函数** ——
+`partCount` 是个函数，`returnByValue` 把函数序列化成 `{}`，日志里就显示
+`模型部件数 partCount={}`，看着像「模型没挂上」。真被它骗过一次：
+对着 CI 日志怀疑 ubuntu runner 上 GLB 没加载，白查了两轮。
+**诊断数字要是假的，比没有更费事** —— 现在改成在页面里先调用再返回。
+
+#### 边界（已实测更新）
+
+早先这里写着「只在本地跑、CI 上没加」，后来**实测推翻了**：ubuntu runner 自带
+Chrome（`/usr/bin/google-chrome` → Google Chrome 153.0.8010.52），swiftshader
+软渲染也能跑（CI #33 起的 `smoke-probe` job）。但那个 job 挂着
+`continue-on-error`，是**观察位不是闸门** —— 不确定能不能稳定跑的检查别直接
+放上去挡发布（SKILL 第 49 条），连绿几轮不飘之后再收进 `test` job。
+它证明「boot 成功、能进主界面、模型在」，证明不了交互全对
+（那是 `cdp-*` 那批专项探针的事）。
 
 ### 6.14 第四层：本地全绿 ≠ CI 绿（CI #29，本地 17 步全 PASS 却红了）
 
