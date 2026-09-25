@@ -57,6 +57,18 @@ function countFetchCalls(src) {
 }
 
 const files = walk(ROOT);
+
+// ★ 扫到 0 个文件时**不许报通过** —— 那不是"没问题"，是"这条检查什么都没验"。
+//   同款洞在 lint-ci-refs 里出现过（SKILL 第 71 条）：扫描式检查是"扫到什么对什么"，
+//   一旦收集文件的环节失效（目录搬走、扩展名改成 .mjs —— `\.(js|jsx|ts|tsx)$`
+//   并不匹配 .mjs），它就会一声不吭地绿过去，比没有这条检查更糟：
+//   它让人以为"没人敢写裸 fetch"这件事有人守着。
+if (files.length === 0) {
+  console.log(`✗ 一个文件都没扫到（目录：${ROOT}）—— 这条检查等于没跑，别当成通过。`);
+  console.log('    多半是源码目录搬走了，或者扩展名不在 (js|jsx|ts|tsx) 里。');
+  process.exit(1);
+}
+
 let bad = 0;
 
 for (const f of files) {
@@ -86,5 +98,5 @@ for (const f of files) {
   }
 }
 
-console.log(bad ? `\n裸网络请求检查：${bad} 处需要处理` : '\n裸网络请求检查通过 ✓');
+console.log(bad ? `\n裸网络请求检查：${bad} 处需要处理（共扫 ${files.length} 个文件）` : `\n裸网络请求检查通过 ✓（共扫 ${files.length} 个文件）`);
 process.exit(bad ? 1 : 0);

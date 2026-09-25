@@ -39,6 +39,14 @@ for (const name of ['index.js', 'App.js']) {
   if (fs.existsSync(p) && fs.statSync(p).isFile()) allFiles.push(p);
 }
 
+// ★ 扫到 0 个文件 = 这条检查什么都没验，不许报 PASS（SKILL 第 71 条同款洞）。
+//   这里只收 `/\.jsx?$/` —— 项目要是迁到 TS（.ts/.tsx），src/ 会整个扫空，
+//   而 index.js / App.js 也改名的话就一个都不剩，然后它照样打印 PASS。
+if (allFiles.length === 0) {
+  console.log(`✗ 一个文件都没扫到（src：${SRC}）—— 这条检查等于没跑，别当成通过。`);
+  process.exit(1);
+}
+
 function collectExports(src) {
   const names = new Set();
   // export const/let/var/function/class  X

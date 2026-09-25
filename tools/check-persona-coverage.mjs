@@ -48,6 +48,30 @@ const bgIds = new Set([...bgs.matchAll(/id: '([a-z]+)'/g)].map((m) => m[1]));
 const pStart = theme.indexOf('export const PERSONAS = [');
 const pEnd = theme.indexOf('export const getPersona');
 const personaBlock = theme.slice(pStart, pEnd);
+
+// ★ 收集环节自己失效时，必须响 —— 不然下面照样打印"有缺口的 0 个"然后退出 0。
+//   （SKILL 第 71 条：扫描式检查是"扫到什么对什么"，扫到 0 条时静默全绿。）
+if (pStart < 0 || pEnd < 0) {
+  console.log('✗ 在 src/theme.js 里定位不到 PERSONAS 块 —— 这个脚本没验到任何东西，别信它的结论。');
+  process.exit(1);
+}
+if (personaIds.length === 0) {
+  console.log('✗ 一个角色 id 都没扫到 —— 多半是上面那条正则跟不上新的 id 前缀了（' +
+    'girlfriend / boyfriend / secretary / realistic-* / ff-* / vt-*）。');
+  process.exit(1);
+}
+
+// ★ 交叉核对：PERSONAS 块里出现的每个 id 都必须被上面那条正则收到。
+//   只靠"数量对不对"抓不到真正的失效方式 —— 加一个新前缀（比如 zz-foo）时，
+//   那条正则会**整条漏掉**这个角色，于是它永远不会被核对，而数量看着也没变。
+//   （大小写在这里是帮上忙的：bgId / poseId 里的 "Id" 是大写 I，不会被误收。）
+const blockIds = [...personaBlock.matchAll(/\bid: '([a-z0-9-]+)'/g)].map((m) => m[1]);
+const missed = [...new Set(blockIds)].filter((id) => !personaIds.includes(id));
+if (missed.length) {
+  console.log(`✗ PERSONAS 里有 ${missed.length} 个角色**根本没被核对到**：${missed.join('、')}`);
+  console.log('    上面那条 id 正则漏了它们 —— 补进 tools/check-persona-coverage.mjs 的正则里。');
+  process.exit(1);
+}
 // ⚠️ 别用 `split(/\n  \{\n/)` 去切（见文件头）。定位 `id: 'xxx'` 再切到下一个角色。
 const byId = new Map();
 for (const id of personaIds) {
@@ -130,8 +154,13 @@ if (dupes.length) {
 // ---- 自检：拿一个已知齐全的角色反向验证脚本没算错 ----
 // 如果这里也报 ✗，那说明是脚本错了，不是数据错了 —— 先修脚本。
 const probe = rows.find((r) => r.id === 'realistic-noa');
+const probeOk = !!(probe && probe.ok);
 console.log(
-  `\n自检（realistic-noa 应当全绿）：${probe && probe.ok ? '✓ 脚本正常' : '✗ 脚本有问题，别信上面的结果'}`
+  `\n自检（realistic-noa 应当全绿）：${probeOk ? '✓ 脚本正常' : '✗ 脚本有问题，别信上面的结果'}`
 );
 
-process.exit(bad === 0 && !dupes.length ? 0 : 1);
+// ★ 自检失败必须**影响退出码**。以前它只是打印一句「别信上面的结果」，
+//   退出码照旧是 0 —— CI 上这一步照样绿，那句警告没人看得见。
+//   打印了 ≠ 拦住了（SKILL 第 69 条「打印了 ≠ 留下来了」的近亲，坏在同一个地方）。
+//   同理，rows 为空时 bad 也是 0，所以下面还多一道 rows.length 的闸。
+process.exit(bad === 0 && !dupes.length && probeOk && rows.length > 0 ? 0 : 1);

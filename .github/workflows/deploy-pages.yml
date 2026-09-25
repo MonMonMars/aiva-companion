@@ -138,6 +138,11 @@ jobs:
           # 断言被放宽时「所有测试照旧全绿」是最容易出现的假象，所以让它常驻。
           # ⚠️ 它会临时改 src/three/companion.js 再还原（.bak 兜底 + try/finally）。
           run "lipsync-teeth" node tools/test-lipsync-teeth.mjs .
+          # 验那几条**扫描式检查**自己有没有牙齿：它们都是「扫到什么就对什么」，
+          # 收集环节一坏（源码目录搬走 / 扩展名改成 .mjs / 角色 id 多了新前缀）
+          # `bad` 就是 0，于是**静默全绿** —— 实测旧行为在空目录上退出 0、塞个
+          # zz-demo 角色也退出 0。这里要求它们在这些场景下必须是红的。
+          run "zero-scan-teeth" node tools/test-lint-zero-scan-teeth.mjs .
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
           exit $fails

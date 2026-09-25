@@ -584,7 +584,7 @@ llm-companion/
 
 ```bash
 npm run lint          # 导入完整性 + 样式引用 + 对外请求是否走 netFetch
-npm test              # 16 步全套（含 lint 三条 + 最后一次真打包）
+npm test              # 22 步全套（含 lint 三条 + 最后一次真打包 + 四组牙齿测试）
 npm run test:fast     # 同上但跳过打包，省几十秒；别把它变成常态
 npm run export:web    # 打个 web 包到 dist/，用来在浏览器里看效果
 npm run verify:bundle   # 单独跑打包验证（web + ios，产物不落盘）
@@ -1119,6 +1119,34 @@ run "rig-semantics" node --import ./tools/ext-resolve.mjs tools/test-rig-semanti
 > 而且「本地绿」的定义里必须包含「CI 那份清单和我这份是同一份」——
 > 不只是步骤名同一份，**命令行也得是同一条**。
 
+### 6.15 扫描式检查的静默假绿：「扫到什么就对什么」
+
+上面那几步盯的是**闸门本身有没有牙齿**，这一节盯的是另一类更安静的失效：
+**收集环节坏掉时，检查会一声不吭地报通过**。
+
+`lint-net-calls` / `lint-styles` / `lint-imports` / `check-persona-coverage`
+都是「扫到什么就对什么」—— `bad` 计数为 0 就打印通过。于是：
+
+| 收集环节坏在哪 | 旧行为（实测） |
+| --- | --- |
+| 扫不到任何文件 | `✅ 样式引用检查通过（扫描 0 个文件）` / `[lint-imports] PASS — 扫描 0 个文件，问题 0 处`，**退出 0** |
+| 角色 id 多了个新前缀（如 `zz-foo`） | `合计 18 个角色，有缺口的 0 个`，**退出 0** —— 而这个角色从头到尾没被核对过 |
+
+第二行是更值得记住的：**数字一点没变，因为漏掉的方式是"整条漏"**。
+只加「扫到 0 个要报错」挡不住它。所以 `check-persona-coverage` 补的是
+**交叉核对**：`PERSONAS` 块里出现的每个 `id` 都必须被那条正则收到，
+没收到的直接报错（沙盒实测：复制 `realistic-noa` 改成 `zz-demo`，
+旧版退出 0、新版退出 1）。
+
+另外同一轮还修掉一处「打印了但没拦住」：脚本末尾那句自检
+「✗ 脚本有问题，别信上面的结果」以前只是 `console.log`，退出码照旧是 0 ——
+现在它失败会让这一步真的变红。
+
+**补的检查**：`tools/test-lint-zero-scan-teeth.mjs`（`runtests` 第 22 步 +
+CI test job 同名一步）。它要求：空目录上三条文件扫描类检查必须红、
+沙盒里塞正则收不到的角色必须红、`PERSONAS` 块定位不到必须红，
+同时**正常仓库必须还是绿的**（免得闸门写得过严）。
+
 ---
 
 ## 七、几个已经做进去的取舍
@@ -1202,7 +1230,7 @@ node tools/verify-live.mjs
 
 | job | 干什么 | 失败后果 |
 |---|---|---|
-| `test` | 与 build **并行**跑全套测试（21 步） | **不挡发布**，只把这个 job 标红 |
+| `test` | 与 build **并行**跑全套测试（22 步） | **不挡发布**，只把这个 job 标红 |
 | `build` | 打包 | 不发布 |
 | `deploy` | ① 发布后跑 `verify-live.mjs`（最多重试 12 次 × 45 秒）② 线上冒烟：`smoke-runtime.mjs --url <网址>` 真 boot 一遍 | ① 报「线上可能还是旧包」，要人工看一眼 ② 网址起不来 → 整个 job 标红 |
 

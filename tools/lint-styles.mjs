@@ -39,6 +39,16 @@ function keysForSheet(src, varName) {
 }
 
 const files = walk(ROOT);
+
+// ★ 扫到 0 个文件 = 这条检查什么都没验，不许报通过（SKILL 第 71 条同款洞）。
+//   上面那个 `\.(js|jsx|ts|tsx)$` 并不匹配 .mjs —— 哪天源码改成 .mjs 扩展名，
+//   它会一声不吭地绿过去。
+if (files.length === 0) {
+  console.log(`✗ 一个文件都没扫到（目录：${ROOT}）—— 这条检查等于没跑，别当成通过。`);
+  console.log('    多半是源码目录搬走了，或者扩展名不在 (js|jsx|ts|tsx) 里。');
+  process.exit(1);
+}
+
 for (const f of files) {
   const src = fs.readFileSync(f, 'utf8');
   for (const v of SHEET_VARS) {

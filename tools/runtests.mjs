@@ -20,8 +20,13 @@
 import { spawnSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = path.resolve(process.argv[2] || '.');
+// ★ 默认根目录由**脚本自己的位置**推出，别用 '.' —— '.' 解析的是 CWD，
+//   而后台任务里 `cd` 不可用（shim 直接 127），CWD 是工作区根，
+//   于是 22 步会在错误的目录里找脚本、全部 ERR_MODULE_NOT_FOUND（SKILL 第 74 条）。
+//   本脚本在 tools/ 下，所以仓库根是它的上一级。
+const ROOT = path.resolve(process.argv[2] || path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
 const R = (s) => path.join(ROOT, s);
 
 // [显示名, 参数数组] —— 与 CI 逐步对应
@@ -96,6 +101,15 @@ STEPS.push(['smoke-runtime-teeth', ['tools/test-smoke-runtime-teeth.mjs', '.']])
 // ⚠️ 它会临时改 src/three/companion.js 再还原（有 .bak 兜底 + try/finally），
 //    放在最后一步，免得改源码的这段时间里别的步骤也在读它。
 STEPS.push(['lipsync-teeth', ['tools/test-lipsync-teeth.mjs', '.']]);
+// 第 22 步验的是那几条**扫描式检查**（lint-net-calls / lint-styles / lint-imports /
+// check-persona-coverage）在「收集环节坏掉」时会响，而不是静默全绿。
+// 它们都是「扫到什么就对什么」：`bad` 计数为 0 就报通过 —— 于是源码目录搬走、
+// 扩展名改成 .mjs（那两条正则并不匹配 .mjs）、或者角色 id 多了个新前缀
+// （`zz-foo` 不在那条正则里 → 这个角色**从来不会被核对**），这些情况统统是绿的。
+// 实测旧行为：空目录上打印「扫描 0 个文件」然后退出 0；塞进一个 zz-demo 角色后
+// 报「合计 18 个角色，有缺口的 0 个」也是退出 0 —— 静默的假绿，比没有这条检查更糟。
+// 常驻的理由和第 19/20/21 步一样：闸门被改松时「所有测试照旧全绿」是最容易出现的假象。
+STEPS.push(['zero-scan-teeth', ['tools/test-lint-zero-scan-teeth.mjs', '.']]);
 
 const TAIL = 40;
 let fails = 0;
