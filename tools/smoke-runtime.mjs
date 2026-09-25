@@ -219,7 +219,7 @@ try {
   await send('Emulation.setDeviceMetricsOverride', { width: 900, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
 
-  // ⚠️ 下面三段轮询的**上限全是手写的**（30×700ms / 12 轮 / 25×1000ms），
+  // ⚠️ 下面三段轮询的**上限全是手写的**（30×700ms / 20 轮 / 25×1000ms），
   //    而「等 Chrome 那个 16 秒上限」就是因为没量过常态、被 runner 一抖捅穿的
   //    （CI #41）。同一个坑不踩第二次：三段都记下实际耗时，并写进末尾那句总结，
   //    这样以后每次运行白留三个数，哪个余量薄了一眼看得出来。
@@ -239,14 +239,16 @@ try {
   //      段          本地      CI      上限        余量
   //      Chrome 端口 0.4s     1.0~6.7s  60s       ≈9x   ← #41 在 16s 上限上被捅穿过
   //      React 挂载  0.7s     0.7s      21s       ≈30x  ← 厚，不用管
-  //      走到 Home   5.2s     7.4s      ~21s(12轮) ≈3x  ← 和捅穿那个同一量级，盯着
+  //      走到 Home   5.2s(4轮) 6.4s(5轮) ~21s(12轮) ≈2.4x ← 和捅穿那个**同一个比例**
+  //      → 所以 12 轮抬到 20 轮：成功路径上零成本（一进 Home 就 break），
+  //        多出来的轮次只在"真的走不到 Home"时才用得上，那时本来就该失败。
   //      模型挂上    0.0s     0.0s      25s       ∞     ← 走到 Home 时早就挂好了
   //    所以只把「走到 Home」的**轮数**也打出来：它是余量最薄的一段，
-  //    而轮数比秒数更能说明问题（一轮 ≈ 2.5s，现在只用 3 轮 / 上限 12 轮）。
+  //    而轮数比秒数更能说明问题（一轮 ≈ 1.5s，CI 实测 5 轮 / 上限 20 轮）。
   const tHome0 = Date.now();
   let reachedHome = false;
   let homeRounds = 0;
-  for (let round = 0; round < 12 && !reachedHome; round++) {
+  for (let round = 0; round < 20 && !reachedHome; round++) {
     homeRounds = round + 1;
     if (await ev('!!(globalThis.__aivaDebug)')) {
       reachedHome = true;
@@ -304,7 +306,7 @@ try {
   const tModel = ((Date.now() - tModel0) / 1000).toFixed(1);
   // 失败时走的是「末 40 行」整段，所以单独打一行（含上限，好对照余量）；
   // 成功时靠末尾那句总结 —— 那边只留 6 行，塞不进别处。
-  const TIMING = `端口 ${waited}s｜挂载 ${tMount}s/21s｜Home ${tHome}s/${homeRounds}轮(上限12)｜模型 ${tModel}s/25s`;
+  const TIMING = `端口 ${waited}s｜挂载 ${tMount}s/21s｜Home ${tHome}s/${homeRounds}轮(上限20)｜模型 ${tModel}s/25s`;
 
   console.log(`产物目录：${path.relative(ROOT, DIST)}`);
   console.log(`各段耗时：${TIMING}`);
