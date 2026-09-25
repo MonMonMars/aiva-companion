@@ -55,7 +55,14 @@ const STEPS = [
 // 830 个模块、web 只有 546 —— 差的那批只有打原生才会走到，缺了成员实现
 // （如 Avatar3D.native.js）时 web 照样全绿。
 const FAST = process.argv.includes('--fast');
-if (!FAST) STEPS.push(['bundle(web+ios)', ['tools/verify-bundle.mjs', '.']]);
+if (!FAST) STEPS.push(['bundle(web+ios)', ['tools/verify-bundle.mjs', '.', '--keep']]);
+// 第 17 步接管第 16 步之上的那一层：「能打包」不等于「能跑起来」。
+// 白屏、boot 抛异常、ErrorBoundary 把错吞掉 —— 这些打包全都发现不了，
+// 只有真在浏览器里 boot 一遍才看得见。实测证明它有牙齿的是这一条：
+// 塞一句 throw 进去，页面照样挂载成功、照样进得了 Home，但异常计数是 1 ——
+// 只看「走到 Home」会放行，加了「无未捕获异常」才拦得住。
+// ⚠️ 只挂本地、没进 CI：Chrome 路径和 swiftshader 软渲染依赖本机。
+if (!FAST) STEPS.push(['smoke-runtime', ['tools/smoke-runtime.mjs', '.']]);
 
 const TAIL = 40;
 let fails = 0;
@@ -80,6 +87,15 @@ for (const [name, args] of STEPS) {
     const tail = lines.slice(Math.max(0, lines.length - TAIL)).join('\n');
     process.stdout.write(`${tail.split('\n').map((l) => `        ${l}`).join('\n')}\n\n`);
   }
+}
+
+// 打包产物是第 16 步用 --keep 留下的（第 17 步要拿它跑），用完由这里统一清掉，
+// 免得每跑一轮就在磁盘上堆几十 MB —— 这些目录都 match .gitignore 里的 dist-*/,
+// 不进 git，但会占地方，也可能让人误以为是正品 dist。
+// 按前缀扫而不是写死两个名字 —— 早期版本产出过不带平台后缀的 dist-localcheck/，
+// 写死的话那种残留永远清不掉（git 又看不见它，最后就只能手工删带 EBUSY 的目录）。
+for (const d of fs.readdirSync(ROOT)) {
+  if (d.startsWith('dist-localcheck')) fs.rmSync(R(d), { recursive: true, force: true });
 }
 
 process.stdout.write(`\n${STEPS.length} 步，失败 ${fails} 项\n`);
