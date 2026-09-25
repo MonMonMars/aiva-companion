@@ -100,6 +100,41 @@ jobs:
           echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
           exit $fails
 
+  # 探一步：运行时冒烟能不能在 ubuntu runner 上跑。
+  #
+  # ⚠️ 它现在**不是闸门** —— `continue-on-error: true`，红了也不会挡发布。
+  # 这一步此前只挂本地：Chrome 路径和 swiftshader 软渲染都依赖本机，
+  # ubuntu runner 上到底行不行只能真跑一次才知道。
+  # 所以先放在一个不挡流程的地方观察（SKILL 第 49 条：不确定能跑的检查
+  # 别猜着放上去 —— 红了会污染所有人的信号，比没有更糟）。
+  # 连着绿几次之后再决定要不要收进 test job。
+  smoke-probe:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 装依赖
+        run: npm install --no-audit --no-fund
+
+      - name: 看看 runner 上有没有 Chrome
+        run: |
+          echo "CHROME_PATH=${CHROME_PATH:-（未设置）}"
+          command -v google-chrome || echo "PATH 里没有 google-chrome"
+          ls -l /usr/bin/google-chrome 2>/dev/null || echo "/usr/bin/google-chrome 不存在"
+          ls -l /usr/bin/chromium 2>/dev/null || echo "/usr/bin/chromium 不存在"
+          google-chrome --version || true
+
+      - name: 打包一份产物给冒烟用
+        run: node tools/verify-bundle.mjs . --keep
+
+      - name: 真的在无头 Chrome 里 boot 一次
+        run: node tools/smoke-runtime.mjs .
+
   build:
     runs-on: ubuntu-latest
     steps:
