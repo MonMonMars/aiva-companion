@@ -310,7 +310,11 @@ try {
     console.log(`\n[smoke-runtime] FAIL — ${bad.map(([, n]) => n).join('、')} 没过`);
     process.exit(1);
   }
-  console.log(`\n[smoke-runtime] PASS — ${checks.map(([, n]) => n).join('、')}`);
+  // ⚠️ 等待秒数**必须写进这一行**，不能只打在开头：CI 的 run() 成功时只 tail 末 6 行，
+  //    开头那句会被整段切掉 —— #44 上实测被切，白等一轮 CI 才发现。
+  //    而这个数恰恰只在**成功**时才值得看（失败时有末 40 行全文）。
+  const slow = Number(waited) > 10;
+  console.log(`\n[smoke-runtime] PASS — ${checks.map(([, n]) => n).join('、')}（Chrome 端口 ${waited}s${slow ? ' ⚠️偏慢' : ''}）`);
 } catch (err) {
   console.log(`\n[smoke-runtime] FAIL — 探针自身出错：${err?.message || err}`);
   ws?.close();
