@@ -24,11 +24,20 @@ jobs:
   # 测试跑在**独立的 job** 里，和 build 并行，**不挡发布**。
   #
   # ⚠️ 别把它挪回 build 里当闸门（试过，直接把发布冻住了）：CI 上 `npm test`
-  #    有一步挂，但本机 11 步全过、干净 checkout 副本里也全过，而 CI 日志要
-  #    admin 权限才拿得到，看不出是哪一步。在查清之前让它挡发布 = 站点停止更新。
+  #    有一步挂，但本机 11 步全过、干净 checkout 副本里也全过，看不出是哪一步。
+  #    在查清之前让它挡发布 = 站点停止更新。
+  #
+  #    （以前这里还写着「CI 日志要 admin 权限才拿得到」—— **后来实测推翻了**：
+  #     git 凭据里的令牌就能直接 GET /actions/runs/{id}/logs 下整包 zip。
+  #     教训：别把「接口拿不到」当永久结论，隔一阵要重测。）
+  #
+  #    那次 CI-only 的失败后来查清了，是 CI #29：workflow 里三行命令还写着
+  #    已删除的 `tools/ext-resolve.mjs`，本地清单早换了 —— 现在由 lint-ci-refs
+  #     的 A/B/C 三项盯着。详见README §6.14。
   #
   # 所以这里改成：**逐步跑 + 写进 Job Summary**，失败的那一步和它的输出直接
-  # 显示在 run 页面上一眼看得到，不用去翻日志。查清之后再决定要不要收紧成闸门。
+  # 显示在 run 页面上一眼看得到，不用去翻日志。「要不要让它挡发布」是发版策略，
+  # 不是这个 job 能自己决定的 —— 目前 deploy 只 needs build。
   test:
     runs-on: ubuntu-latest
     steps:
@@ -86,7 +95,14 @@ jobs:
           # 于是「原生端能不能打包」一直没人验证过 —— 而同一入口在原生是 830 个模块、
           # web 只有 546（相差的都是只有打原生才走到的代码）。缺了成员实现
           # （如 Avatar3D.native.js）时，web 打包照样全绿。
-          run "bundle(web+ios)" node tools/verify-bundle.mjs .
+          # 本地要给第 17 步留产物所以带 --keep，CI 上没有冒烟那一步，原先不带。
+          # 现在 CI 也要跑冒烟了，两边就都得留产物（顺带让 C 项的命令行完全一致）。
+          run "bundle(web+ios)" node tools/verify-bundle.mjs . --keep
+          # 运行时冒烟：把上一步打出来的产物在 headless Chrome 里真的 boot 一遍。
+          # ⚠️ 这一步原先**只挂本地**（Chrome 路径 + swiftshader 软渲染都依赖本机），
+          #    后来在 ubuntu runner 上实测过了：自带 Chrome 153（/usr/bin/google-chrome），
+          #    软渲染也能跑。先当观察位跑了三轮（#33/#34/#35）确认不飘，才收进来。
+          run "smoke-runtime" node tools/smoke-runtime.mjs .
           # 这一条盯的是**验收本身**：workflow 里引用的文件是否还在、
           # CI 的每一步是否本地套装里也有。
           # 起因是把两套 loader 合并删掉 ext-resolve.mjs 之后，本地全绿、
@@ -100,40 +116,9 @@ jobs:
           echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
           exit $fails
 
-  # 探一步：运行时冒烟能不能在 ubuntu runner 上跑。
-  #
-  # ⚠️ 它现在**不是闸门** —— `continue-on-error: true`，红了也不会挡发布。
-  # 这一步此前只挂本地：Chrome 路径和 swiftshader 软渲染都依赖本机，
-  # ubuntu runner 上到底行不行只能真跑一次才知道。
-  # 所以先放在一个不挡流程的地方观察（SKILL 第 49 条：不确定能跑的检查
-  # 别猜着放上去 —— 红了会污染所有人的信号，比没有更糟）。
-  # 连着绿几次之后再决定要不要收进 test job。
-  smoke-probe:
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: 装依赖
-        run: npm install --no-audit --no-fund
-
-      - name: 看看 runner 上有没有 Chrome
-        run: |
-          echo "CHROME_PATH=${CHROME_PATH:-（未设置）}"
-          command -v google-chrome || echo "PATH 里没有 google-chrome"
-          ls -l /usr/bin/google-chrome 2>/dev/null || echo "/usr/bin/google-chrome 不存在"
-          ls -l /usr/bin/chromium 2>/dev/null || echo "/usr/bin/chromium 不存在"
-          google-chrome --version || true
-
-      - name: 打包一份产物给冒烟用
-        run: node tools/verify-bundle.mjs . --keep
-
-      - name: 真的在无头 Chrome 里 boot 一次
-        run: node tools/smoke-runtime.mjs .
+  # （这里原先有个独立的 smoke-probe job，挂着 continue-on-error 当观察位。
+  #  连绿三轮确认不飘之后，冒烟已经并进上面的 test job 了 —— 收进来之后它才
+  #  被 lint-ci-refs 的 A/B/C 三项覆盖，本地清单和 CI 清单才算真对上。）
 
   build:
     runs-on: ubuntu-latest

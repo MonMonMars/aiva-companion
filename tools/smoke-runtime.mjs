@@ -14,8 +14,9 @@
 // ⚠️ 诚实的边界：
 //   - 早先写着「只在本地跑、CI 上没加」，后来**实测推翻了**：ubuntu runner 自带
 //     Chrome（/usr/bin/google-chrome → Google Chrome 153），swiftshader 软渲染也能跑
-//     （CI #33 起的 smoke-probe job）。但那个 job 现在挂着 continue-on-error，
-//     是**观察位不是闸门** —— 连绿几轮确认不飘之后才收进 test job。
+//     （CI #33/#34/#35 三轮观察，都绿，partCount 53 / hasRig true 与本地一致）。
+//     观察位原本挂着 continue-on-error，确认不飘之后已经并进 test job ——
+//     收进去之后它才被 lint-ci-refs 的 A/B/C 三项覆盖，两边清单才算真对上。
 //   - 它证明「boot 成功、能进主界面、模型在」，证明不了交互全对
 //     （那是 cdp-* 那批专项探针的事）。
 //

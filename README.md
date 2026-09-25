@@ -1041,9 +1041,11 @@ root 子节点数：1        ← 挂载正常
 
 早先这里写着「只在本地跑、CI 上没加」，后来**实测推翻了**：ubuntu runner 自带
 Chrome（`/usr/bin/google-chrome` → Google Chrome 153.0.8010.52），swiftshader
-软渲染也能跑（CI #33 起的 `smoke-probe` job）。但那个 job 挂着
-`continue-on-error`，是**观察位不是闸门** —— 不确定能不能稳定跑的检查别直接
-放上去挡发布（SKILL 第 49 条），连绿几轮不飘之后再收进 `test` job。
+软渲染也能跑。但不确定能不能稳定跑的检查别直接放上去挡发布（SKILL 第 49 条），
+所以先开了个 `continue-on-error` 的观察位（`smoke-probe` job），连绿三轮
+（#33/#34/#35，`partCount 53 / hasRig true` 与本地一致）确认不飘之后，
+才并进 `test` job。收进去之后它也才被 `lint-ci-refs` 的 A/B/C 三项覆盖 ——
+在那之前本地清单和 CI 清单其实一直没对上（本地 19 步、CI 18 步）。
 它证明「boot 成功、能进主界面、模型在」，证明不了交互全对
 （那是 `cdp-*` 那批专项探针的事）。
 
