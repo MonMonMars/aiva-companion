@@ -71,6 +71,10 @@ jobs:
           run "inspect-character" node tools/inspect-character.mjs
           run "realistic-pipeline" node tools/test-realistic-pipeline.mjs
           run "lint-imports" node tools/lint-imports.mjs .
+          # 第 C 项检查（相对 import 必须在磁盘上落地）挡的就是 #25 那次：
+          # src/llm.js 写成 './netFetch'（正确是 './lib/netFetch'），
+          # 本地 node --check 不解析路径、15 步全绿，只有 Metro 打包才炸。
+          run "lint-styles" node tools/lint-styles.mjs .
           # 这条盯的是「对外请求有没有走 netFetch」—— 同一个漏兜底的 bug
           # 已经在 auth / database / STT/TTS / llm / web / region 六处出现过，
           # 光靠"下次记得"守不住，必须在 CI 上跑。

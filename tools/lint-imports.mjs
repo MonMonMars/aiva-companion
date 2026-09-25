@@ -10,9 +10,10 @@
 //   于是 UI 是 undefined，样式表里 `color: UI.text` 抛
 //   "Cannot read properties of undefined (reading 'text')"，整个设置页白屏。
 //
-// 两个子检查：
+// 三个子检查：
 //   A. 导入的名字在目标模块里必须真的被导出
 //   B. 用了 `X.` 的地方，X 必须在本文件里被导入或声明过
+//   C. 相对路径必须能在磁盘上落地（Metro 打包失败的那类，见第 4 节）
 import fs from 'fs';
 import path from 'path';
 
@@ -30,6 +31,13 @@ const allFiles = [];
     else if (/\.jsx?$/.test(e.name)) allFiles.push(p);
   }
 })(SRC);
+
+// Metro 的入口是根目录下的 index.js → App.js → src/**，前两层不在 src/ 里。
+// 少了这两行，入口层写错 import 路径照样只有 CI 打包时才炸。
+for (const name of ['index.js', 'App.js']) {
+  const p = path.join(ROOT, name);
+  if (fs.existsSync(p) && fs.statSync(p).isFile()) allFiles.push(p);
+}
 
 function collectExports(src) {
   const names = new Set();
@@ -181,9 +189,107 @@ for (const file of allFiles) {
   }
 }
 
+// ---- 4. 相对路径必须能在磁盘上落地 ----
+// ---------------------------------------------------------------------------
+// CI 真实案例（#25）：src/llm.js 写成
+//     import { netFetch, NET_TIMEOUT_CODE } from './netFetch';
+//   但 llm.js 在 src/ 根目录，netFetch.js 在 src/lib/ —— 正确写法是 './lib/netFetch'。
+//   本地怎么都抓不到：`node --check` 只解析语法、不解析 import 路径，
+//   15 步测试全绿；到了 CI 的 Metro 打包才炸（「导出 Web 静态包」失败）。
+//
+// 所以这里补一道：凡是项目内的相对引用，必须在磁盘上找得到。
+const MODULE_EXTS = ['', '.js', '.jsx', '.mjs', '.cjs', '.json', '.ts', '.tsx'];
+const PLATFORMS = ['', '.web', '.native', '.ios', '.android'];
+
+/** 生成 Metro 会去试的那串候选：<base>、<base><平台><扩展名> */
+function candidatesFor(base) {
+  const out = [];
+  for (const plat of PLATFORMS) for (const ext of MODULE_EXTS) out.push(base + plat + ext);
+  return out;
+}
+
+function statFile(p) {
+  try {
+    return fs.statSync(p).isFile() ? p : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveTarget(fromFile, spec) {
+  if (!spec.startsWith('.')) return null; // 只查项目内的相对引用
+  const base = path.resolve(path.dirname(fromFile), spec);
+
+  for (const c of candidatesFor(base)) {
+    const hit = statFile(c);
+    if (hit) return hit;
+  }
+  // 目录 → index
+  for (const c of candidatesFor(path.join(base, 'index'))) {
+    const hit = statFile(c);
+    if (hit) return hit;
+  }
+  // 兜底：assets 里的资源扩展名不逐一枚举（Metro 的 assetExts 很长，
+  // 还有 morph.json / sliders.json 这种复合扩展名），只要同目录下存在
+  // 「同名 + 任意扩展名」就算落地。写错前缀恰好命中别人文件名的情况极少，
+  // 而这里误报会让整条 lint 失去信任，不值得。
+  try {
+    const parent = path.dirname(base);
+    const name = path.basename(base);
+    for (const e of fs.readdirSync(parent)) {
+      if (e !== name && !e.startsWith(`${name}.`)) continue;
+      const hit = statFile(path.join(parent, e));
+      if (hit) return hit;
+    }
+  } catch {
+    /* 目录都不存在，交给下面报错 */
+  }
+  return null;
+}
+
+// 项目里有没有同名文件放在别处？有就把正确路径直接给出来
+function suggestRel(fromFile, spec) {
+  const core = path.basename(spec).replace(/\.[^.]+$/, '');
+  const hits = allFiles.filter((f) => path.basename(f).replace(/\.[^.]+$/, '') === core);
+  if (!hits.length) return '';
+  const rels = hits.map((f) => {
+    let r = path.relative(path.dirname(fromFile), f).replace(/\\/g, '/');
+    return r.startsWith('.') ? r : `./${r}`;
+  });
+  return `；也许你找的是 ${rels.slice(0, 3).join(' / ')}`;
+}
+
+// import/export ... from './x' | 动态 import('./x') | require('./x') | 副作用 import './x'
+// ⚠️ 逐个 plants 自己的 lastIndex：同一个正则对象在多行间复用，忘了 reset 会跳行
+const SPEC_PATTERNS = [
+  /\bfrom\s*['"](\.[^'"]+)['"]/g,
+  /\bimport\s*\(\s*['"](\.[^'"]+)['"]/g,
+  /\brequire\s*\(\s*['"](\.[^'"]+)['"]/g,
+  /^\s*import\s+['"](\.[^'"]+)['"]/gm,
+];
+
+for (const file of allFiles) {
+  const rel = path.relative(ROOT, file);
+  const lines = stripComments(fs.readFileSync(file, 'utf8')).split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    for (const re of SPEC_PATTERNS) {
+      re.lastIndex = 0;
+      let m;
+      while ((m = re.exec(lines[i])) !== null) {
+        const spec = m[1];
+        if (resolveTarget(file, spec)) continue;
+        problems.push(
+          `✗ ${rel}:${i + 1}\n    相对引用 '${spec}' 在磁盘上找不到${suggestRel(file, spec)}` +
+            `\n    （这条会让 Metro 打包失败；本地 node --check 抓不到，因为它不解析 import 路径）`
+        );
+      }
+    }
+  }
+}
+
 if (problems.length) {
   console.log(problems.join('\n\n'));
-  console.log(`\n[lint-imports] FAIL — ${problems.length} 处导入问题，这些会在渲染时直接白屏`);
+  console.log(`\n[lint-imports] FAIL — ${problems.length} 处导入问题，这些会在渲染或打包时炸`);
   process.exit(1);
 }
 // 输出保持纯 ASCII：Windows 下这条日志会被重定向进文件再读，

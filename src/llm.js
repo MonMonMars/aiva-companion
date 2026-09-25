@@ -8,7 +8,7 @@
 // 3) 没有 API Key 时用本地兜底引擎，让 App 开箱即可体验（不会白错误一堆给用户看）
 
 import { getPersona, levelFromAffection, LEVEL_TITLES, pick } from './theme';
-import { netFetch, NET_TIMEOUT_CODE } from './netFetch';
+import { netFetch, NET_TIMEOUT_CODE } from './lib/netFetch';
 
 /** 单个对话请求的等待上限。比 netFetch 默认的 30 秒宽 —— LLM 要吐完整一段话 */
 const LLM_TIMEOUT_MS = 45000;

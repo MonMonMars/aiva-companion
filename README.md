@@ -583,13 +583,18 @@ llm-companion/
 ### 6.1 开发时的检查命令
 
 ```bash
-npm run lint     # 导入完整性 + 样式引用检查
-npm test         # 情绪分段 / 儿歌音频 / 3D 挂载·骨架·表情·口型
-npm run export:web   # 打个 web 包到 dist/，用来在浏览器里看效果
+npm run lint          # 导入完整性 + 样式引用 + 对外请求是否走 netFetch
+npm test              # 16 步全套（含 lint 三条 + 最后一次真打包）
+npm run test:fast     # 同上但跳过打包，省几十秒；别把它变成常态
+npm run export:web    # 打个 web 包到 dist/，用来在浏览器里看效果
+npm run verify:web-export   # 单独跑打包验证（产出写在 dist-localcheck/）
 npm run verify:lips http://127.0.0.1:8130/   # 浏览器里真的说一句，截图比对口型
 ```
 
-`lint-imports.mjs` 专门防一类**打包不报错、运行时整页白屏**的问题：
+⚠️ **`npm test` 的第 16 步不是凑数的，它跑的是真正的 Metro 打包。**
+为什么必须放在本地套装里，见 6.11 —— 曾经出现过「本地 15 步全绿、推上去 CI 才炸」。
+
+`lint-imports.mjs` 专门防两类**打包不报错 / 或者只有打包才报错**的问题：
 从某个模块导入了它根本没导出的名字（真实踩过：从 `components/ui` 导入 `UI`，
 但 `UI` 其实住在 `theme.js`，于是 `color: UI.text` 直接抛异常，整个设置页白屏）。
 
@@ -884,6 +889,51 @@ src 下出现未包装的 `fetch(`（白名单只有三处本地读取：`netFet
 **数量钉死** —— 多一处就红。它挂在 `npm run lint` 和 CI 上。
 这条 lint 的牙齿是验过的：临时塞一个裸 fetch 进去、以及在 stt.js 加到第 7 处，
 两次都如期变红。
+
+### 6.11 本地 15 步全绿，CI 却炸了：测试全绿 ≠ 能打包
+
+6.10 那一轮收尾时，本地 15 步全 PASS，提交推上去，**CI #25 build 失败**，
+失败点落在「导出 Web 静态包」。元凶只有一行：
+
+```js
+// src/llm.js —— llm.js 在 src/ 根，netFetch.js 在 src/lib/
+import { netFetch, NET_TIMEOUT_CODE } from './netFetch';   // ✗
+import { netFetch, NET_TIMEOUT_CODE } from './lib/netFetch'; // ✓
+```
+
+Meta 报得很清楚（这也是后来写静态检查时参照的候选项清单）：
+
+```
+Error: Unable to resolve module ./netFetch from .../src/llm.js:
+None of these files exist:
+  * src\netFetch(.web.ts|.ts|.web.tsx|.tsx|.web.mjs|.mjs|.web.js|.js|.web.jsx|.jsx|.web.json|.json|.web.cjs|.cjs|...)
+  * src\netFetch
+```
+
+**为什么本地一条都没挡住** —— 漏洞是三层叠加：
+
+1. `node --check` **只解析语法，不解析 import 路径**。它不知道 `'./netFetch'` 指向什么。
+2. `lint-imports` 当时的 `resolveImport()` 一旦解析不出目标就 `continue` 跳过，
+   等于**把「路径不存在」当成「不关我的事」**。
+3. 本地套装里**根本没有打包这一步**。15 步覆盖的是逻辑测试 + lint，
+   没有一步真的把 Metro 跑起来 —— 于是本地绿的定义里，"能打包"从来不在其中。
+
+三层分别补上：
+
+| 补的东西 | 挡哪一层的漏洞 | 验证方式 |
+|---|---|---|
+| `lint-imports` 新增第 C 项：相对 import/require **必须在磁盘上落地**（含平台变体 `.web.js`、资源扩展名、目录 index），挂了还会提示「也许你找的是 ./lib/netFetch.js」 | 2 | 退化实验：改回 `'./netFetch'`，如期报错并给出正确路径 |
+| 把根进入口 `index.js` / `App.js` 纳入扫描（walk 原本只从 `src/` 出发，入口这两层是盲区） | 2 | 退化实验：把 `App.js` 的 `'./src/theme'` 改成 `'./theme'`，如期变红 |
+| `tools/verify-web-export.mjs` + `runtests.mjs` 的第 16 步 | 3 | 退化实验：错误路径下本地 Metro **852ms 就失败**（热缓存 6 秒通过） |
+
+⚠️ 第 16 步的存在本身就是这节的结论：**别相信一套不含构建步骤的本地验证。**
+测试全绿只说明被测的东西没问题，说明不了没被测的东西。附成本高（几十秒），
+所以用 `--fast` 可跳过，但它是默认开的。
+
+另外记一笔同类错误的 mental 归类：6.9 / 6.10 是「同一个逻辑 bug 换个地方再犯」，
+6.11 是「同一处踩了之后，**修的是实例而不是导致它逃过检查的那道缺口**」。
+后者的判据是：修完之后问一句 —— **下一次同样的事是怎么被挡住的？**
+答不上来（或者只能答「下次我会注意」）就还没修完。
 
 > 为什么这三处**没有**配运行时单测：保护逻辑本身住在 netFetch 里（那 18 条断言、
 > 含「装聋平台」那条都盯着它），而 lint 保证这三处确实走了 netFetch。
