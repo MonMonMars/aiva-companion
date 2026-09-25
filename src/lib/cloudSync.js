@@ -7,7 +7,16 @@
 //   登录时先看云端那行的时间戳 ts 和本机 store.localDirtyAt() 比，
 //   云端更晚 → 本机被覆盖；本机更晚 → 立刻把本机推上去覆盖云端。
 //   这样离线玩一天再登录不会丢进度，换设备也能拉到最新的那份。
-import { cloud } from './cloudClient';
+// ⚠️ 所有 database 调用必须走 dbCall，不能直接 await：SDK 建客户端时没传
+//    timeout（见 cloudClient.js 里 DB_TIMEOUT_MS 的注释），网络「挂起」时
+//    await 永不落定。这里的调用者全都按那样的姿势等着：
+//      · AccountView 在 setBusy(true) 之后 await syncOnLogin / pushState
+//        → finally { setBusy(false) } 靠 await 落定才会跑，挂起 = 永久转圈
+//      · useAccount 的 loading:false 也押在 ensureProfile() 上
+//          → 没出口就是账号页永远停在「正在读取账号…」
+//    dbCall 超时返回 { data:null, error:{kind:'timeout'} }，下面既有的
+//    `if (error) throw error` 会原样抛出去，落到同一句人话提示上。
+import { cloud, dbCall } from './cloudClient';
 import * as S from '../store';
 
 /**
@@ -16,12 +25,14 @@ import * as S from '../store';
  * 所以这里怎么写都不可能把自己提权成 admin。管理员身份只能由数据库侧授予。
  */
 export async function ensureProfile() {
-  const { data, error } = await cloud.database.from('profiles').select('role').maybeSingle();
+  const { data, error } = await dbCall((sig) =>
+    cloud.database.from('profiles').select('role').maybeSingle().abortSignal(sig));
   if (error) throw error;
   if (data) return data.role || 'user';
 
   // 还没有行：建一条自己的。role 不允许客户端指定，用默认值 'user'。
-  const ins = await cloud.database.from('profiles').insert({}).select('role');
+  const ins = await dbCall((sig) =>
+    cloud.database.from('profiles').insert({}).select('role').abortSignal(sig));
   if (ins.error && ins.error.code !== '23505') throw ins.error; // 23505 = 并发下已存在，忽略
   return 'user';
 }
@@ -30,7 +41,8 @@ export const getRole = ensureProfile;
 
 /** 拉云端进度；没有云端记录返回 null */
 export async function pullState() {
-  const { data, error } = await cloud.database.from('user_state').select('payload').maybeSingle();
+  const { data, error } = await dbCall((sig) =>
+    cloud.database.from('user_state').select('payload').maybeSingle().abortSignal(sig));
   if (error) throw error;
   return data?.payload || null;
 }
@@ -38,21 +50,25 @@ export async function pullState() {
 /** 把本机进度推上去。返回是否写入成功。 */
 export async function pushState() {
   const payload = { v: 1, ...S.exportCloud(), ts: Date.now() };
-  const existing = await cloud.database.from('user_state').select('id').maybeSingle();
+  const existing = await dbCall((sig) =>
+    cloud.database.from('user_state').select('id').maybeSingle().abortSignal(sig));
   if (existing.error) throw existing.error;
 
   if (existing.data?.id) {
-    const up = await cloud.database
-      .from('user_state')
-      .update({ payload })
-      .eq('id', existing.data.id)
-      .select('id');
+    const up = await dbCall((sig) =>
+      cloud.database
+        .from('user_state')
+        .update({ payload })
+        .eq('id', existing.data.id)
+        .select('id')
+        .abortSignal(sig));
     if (up.error) throw up.error;
     // ⚠️ RLS 会静默过滤：跨用户更新返回空数组且不带 error。空数组 = 没写成，要报错而不是装成功。
     return Array.isArray(up.data) && up.data.length > 0;
   }
 
-  const ins = await cloud.database.from('user_state').insert({ payload }).select('id');
+  const ins = await dbCall((sig) =>
+    cloud.database.from('user_state').insert({ payload }).select('id').abortSignal(sig));
   if (ins.error) throw ins.error;
   return Array.isArray(ins.data) && ins.data.length > 0;
 }

@@ -48,6 +48,45 @@ export async function authCall(fn, ms = AUTH_TIMEOUT_MS) {
 }
 
 /**
+ * database 请求的等待上限。
+ *
+ * ⚠️ 别以为 database 比 auth 安全。SDK 建 PostgrestClient 时是这样写的
+ *    （node_modules/@tencent-ai/workbuddy-cloud-sdk/lib/index.js:5038）：
+ *        new PostgrestClient(url, { fetch: fetch2 })      ← 没传 timeout
+ *    而构造函数里（同文件 4756 行）只有
+ *        if (timeout !== void 0 && timeout > 0) { ...包一层带 abort 的 fetch... }
+ *        else { this.fetch = originalFetch }              ← 裸 fetch
+ *    所以默认**一点超时都没有**。文件里那些 `timeout` 字样是 supabase 留的
+ *    可选能力，没人用 —— 光看见「database 模块里有 timeout」就以为安全，
+ *    会得出完全相反的结论。
+ *
+ *    真正会被卡住的地方是登录成功后的第一步：AccountView 里 `setBusy(true)`
+ *    之后 await syncOnLogin() / pushState()，而 `finally { setBusy(false) }`
+ *    要靠 await 落定才会执行。另外 useAccount 的 loading 也押在同一个 await 上。
+ */
+export const DB_TIMEOUT_MS = 10000;
+
+/**
+ * 所有 `cloud.database.*` 都要经它调用。
+ *
+ * 与 authCall 对称：归一成 `{ data, error }` 而不是抛异常，这样 cloudSync 里
+ * 现有的 `if (error) throw error` 一行都不用改，超时自然落进同一句人话。
+ *
+ * `fn` 会收到一个 AbortSignal —— 超时那一刻我们已经不等了，顺手把请求掐掉，
+ * 免得它在后台继续占着连接（弱网正是要防的场景，连接更金贵）。
+ * PostgrestBuilder 的 `abortSignal()` 返回 this，可以直接挂在链式末尾。
+ */
+export async function dbCall(fn, ms = DB_TIMEOUT_MS) {
+  const ac = new AbortController();
+  try {
+    return await withTimeout(fn(ac.signal), ms, 'db-timeout', () => ac.abort());
+  } catch (e) {
+    // 同 authCall：同步抛错、请求 reject、等待超时，三种都收在这儿
+    return { data: null, error: { kind: 'timeout', message: String(e?.message || e) } };
+  }
+}
+
+/**
  * 当前会话。一期没有匿名登录，所以没登录就是 null —— 调用方必须自己处理
  * 「还没登录」这条路径，不要指望拿到一个假身份。
  */

@@ -1,17 +1,24 @@
 /**
- * authCall / authErrorMessage 的行为契约。
+ * authCall / dbCall / authErrorMessage 的行为契约 —— 云端调用的「挂起」兜底。
  *
  * 为什么要有这个测试（别当样板代码删掉）：
- *   SDK 的 AuthModule 里 auth 请求是**裸 fetch** —— 没有 abortSignal，也没有
- *   任何超时（lib/index.js 里的 AbortSignal / timeout 全在 database 和 storage）。
- *   所以网络「挂起」而不是「快速失败」时 await 永不落定：
+ *   网络挂在 Clinet 与服务器「连不上也未被拒」的状态时（电梯里、欠费 4G、
+ *   DNS 黑洞），await **永不落定**。而 UI 的出口全都写在 `finally` 里 ——
+ *   `finally` 要靠 await 落定才会跑，所以挂起 = 永久转圈且没有取消入口：
  *     · useAccount 的 loading 一直是 true → 账号页停在「正在读取账号…」
- *     · AccountView 的 setBusy(true) → 登录按钮被转圈永久替换，且没有取消入口
- *   authCall 就是那个兜底。这里锁住的是「挂起也必须有出口」。
+ *     · AccountView 的 setBusy(true) → 按钮被 ActivityIndicator 永久替换
+ *   authCall / dbCall 就是那两层兜底。这里锁住的是「挂起也必须有出口」。
+ *
+ * ⚠️ 别信「database 模块里有 timeout 所以安全」——那是错的一半：
+ *    SDK 建 PostgrestClient 时**没传** timeout（lib/index.js:5038 只传了 fetch），
+ *    而构造函数里 timeout 没传就走 `else { this.fetch = originalFetch }`
+ *    （同文件 4756~4787 行）—— 裸 fetch，一点超时都没有。文件里那些
+ *    `timeout` 字样是 supabase 留的可选能力，没人用。
+ *    所以 auth 和 database **两边都要兜**，只兜 auth 等于只堵了进门那一段。
  *
  * 用法：node --import ./tools/ext-resolve.mjs tools/test-auth-timeout.mjs
  */
-import { authCall, authErrorMessage, AUTH_TIMEOUT_MS } from '../src/lib/cloudClient.js';
+import { authCall, dbCall, authErrorMessage, AUTH_TIMEOUT_MS, DB_TIMEOUT_MS } from '../src/lib/cloudClient.js';
 
 let pass = 0, fail = 0;
 const ok = (cond, name, extra = '') => {
@@ -29,6 +36,7 @@ const onlyThen = (v) => ({ then: (r) => r(v) });       // 只有 then 的 thenab
 
 console.log('— 常量 —');
 ok(AUTH_TIMEOUT_MS >= 5000 && AUTH_TIMEOUT_MS <= 30000, `AUTH_TIMEOUT_MS 在合理区间（${AUTH_TIMEOUT_MS}ms）`);
+ok(DB_TIMEOUT_MS >= 5000 && DB_TIMEOUT_MS <= 30000, `DB_TIMEOUT_MS 在合理区间（${DB_TIMEOUT_MS}ms）`);
 
 console.log('\n— 正常路径必须原样透传 —');
 {
@@ -68,6 +76,41 @@ ok(authErrorMessage({ kind: 'unauthenticated' }) === '账号或密码不对', '�
 ok(authErrorMessage(null) === '出了点问题，再试一次', 'null 也要有一句话，不能崩');
 ok(!/timeout|auth-timeout|undefined|Failed to fetch/i.test(authErrorMessage({ kind: 'timeout' })),
   '给用户的文案里不能出现内部串');
+
+console.log('\n— dbCall：database 那一层同样要有出口 —');
+{
+  const r = await dbCall(() => Promise.resolve({ data: [{ id: 1 }], error: null }), 80);
+  ok(Array.isArray(r && r.data) && r.data[0].id === 1, '正常结果原样返回，不被改写');
+
+  const t0 = Date.now();
+  const h = await dbCall(never, 80);
+  const dt = Date.now() - t0;
+  ok(h && h.data === null && h.error && h.error.kind === 'timeout',
+    '挂起后归一成 data:null + kind:timeout', JSON.stringify(h));
+  ok(dt >= 75 && dt < 2000, `确实等到了上限才放弃（${dt}ms）`);
+
+  // 端到端：cloudSync 拿到 error 就 throw → UI 收进 authErrorMessage，必须还是人话
+  ok(authErrorMessage(h.error) === '服务器没响应，等一会儿再试',
+    'dbCall 的超时落到同一句人话上（cloudSync 的 if(error) throw error 不用改）');
+
+  const r2 = await dbCall(() => onlyThen({ data: 'y', error: null }), 80);
+  ok(r2 && r2.data === 'y', 'builder 那种「只有 then」的返回值也能包住');
+
+  const r3 = await dbCall(() => onlyThen({ data: null, error: { kind: 'network' } }), 80);
+  ok(r3 && r3.error && r3.error.kind === 'network', 'builder 自带的 error 不被误判成超时');
+}
+
+console.log('\n— 超时要把没人等的请求掐掉 —');
+{
+  let seen = null;
+  await dbCall((sig) => { seen = sig; return { then: () => {} }; }, 60);
+  ok(seen instanceof AbortSignal, 'dbCall 会把 AbortSignal 交给调用方（给 .abortSignal() 挂）');
+  ok(seen && seen.aborted === true, '超时后 signal 被 abort，后台不再占着连接');
+
+  let seen2 = null;
+  await dbCall((sig) => { seen2 = sig; return Promise.resolve({ data: 1, error: null }); }, 60);
+  ok(seen2 && seen2.aborted === false, '正常返回时不该 abort');
+}
 
 console.log('\n— 自检：不套 authCall 的话，挂起真的没有出口 —');
 {
