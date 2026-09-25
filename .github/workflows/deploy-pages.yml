@@ -61,7 +61,7 @@ jobs:
           run "check-persona-coverage" node tools/check-persona-coverage.mjs
           run "withTimeout" node tools/test-with-timeout.mjs
           run "auth-timeout" node --import ./tools/ext-resolve.mjs tools/test-auth-timeout.mjs
-          run "net-timeout" node tools/test-net-timeout.mjs
+          run "net-timeout" node --import ./tools/ext-resolve.mjs tools/test-net-timeout.mjs
           run "nativeSpeech" node tools/nativeSpeech.test.mjs
           run "espeak" node tools/espeak.test.mjs
           run "tts" node tools/tts.test.mjs

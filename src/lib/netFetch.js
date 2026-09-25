@@ -9,21 +9,39 @@
 //    这不是「慢一点」，是无限期卡住。2026-09-25 补 STT/TTS 兜底时发现的，
 //    和 auth / database 那两次是同一个错：以为某个模块自带超时，实际没有。
 //
+// ⚠️⚠️ 超时**不能只靠 AbortController**（这一点改过一次，别退化回去）：
+//    signal 只是"通知对方取消"，得对方（fetch 实现）真的搭理它才会 reject。
+//    src/lib/region.js 里那句"RN 的 fetch 不认 AbortSignal 时也能靠
+//    Promise.race 兜住"说的就是这件事 —— 万一某个平台的 fetch 装聋，
+//    只发 signal 就等于没有超时，await 照样永不落定，前面那些分析全部白做。
+//    所以这里是**两层**：
+//      · AbortController —— 到点把没人等的请求掐掉，别让它在后台占着连接；
+//      · withTimeout 的 Promise.race —— 真正保证「一定会有一个结果」。
+//    只有第一层时测试照样绿（浏览器/node 的 fetch 都认 signal），
+//    但换到不认的平台就全盘失效 —— 这种"测不出来"的差别才最危险。
+//
 // ⚠️ 只用于**网络请求**。读本地录音那种 `fetch(blobUri)` 别套上来 ——
 //    本机读文件在移动端可能真的慢，给它加上限只会把正常流程掐断。
-//
-// 判据参考 services/web.js 里那份 req()（搜索/天气用的），这里抽成通用的：
-// AbortController + setTimeout + AbortError 转人话 + finally 清定时器。
-// 四步缺一不可 —— 少 clearTimeout 会让定时器泄漏；不转人话就会给用户看
-// 一句 "The user aborted a request"。
+
+import { withTimeout } from './withTimeout';
 
 export const NET_TIMEOUT_MS = 30000;
 
 /** 超时错误的 machine-readable 标记（err.code），也是线上验收的探针串 */
 export const NET_TIMEOUT_CODE = 'net-timeout';
 
+function timeoutError(ms) {
+  // 按秒取整要注意：调用方传小于 1 秒的上限时（测试里常见）会变成「等了 0 秒」，
+  // 那是句明显的假话，所以不足一秒就照毫秒说。
+  const wait = ms >= 1000 ? `${Math.round(ms / 1000)} 秒` : `${Math.round(ms)} 毫秒`;
+  const err = new Error(`服务器没响应（等了 ${wait}）`);
+  // 挂起不是用户网络设置的锅，别写「检查一下网络」去误导他
+  err.code = NET_TIMEOUT_CODE;
+  return err;
+}
+
 /**
- * 带等待上限的 fetch。超时抛 Error（人话），调用方按普通失败处理即可。
+ * 带等待上限的 fetch。超时抛 Error（带 code，人话文案），调用方按普通失败处理即可。
  *
  * @param {string} url
  * @param {object} [init] fetch 的第二个参数
@@ -35,24 +53,21 @@ export async function netFetch(url, init = {}, ms = NET_TIMEOUT_MS) {
   if (init?.signal) return fetch(url, init);
 
   const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), ms);
   try {
-    return await fetch(url, { ...init, signal: ac.signal });
+    return await withTimeout(
+      fetch(url, { ...init, signal: ac.signal }),
+      ms,
+      NET_TIMEOUT_CODE,
+      () => ac.abort() // 我们已经不等了，别让它继续占着连接（弱网正是要防的场景）
+    );
   } catch (e) {
-    // 挂起不是用户网络设置的锅，别写「检查一下网络」去误导他
-    if (e?.name === 'AbortError') {
-      // 按秒取整要注意：调用方传小于 1 秒的上限时（测试里常见）会变成「等了 0 秒」，
-      // 那是句明显的假话，所以不足一秒就照毫秒说。
-      const wait = ms >= 1000 ? `${Math.round(ms / 1000)} 秒` : `${Math.round(ms)} 毫秒`;
-      const err = new Error(`服务器没响应（等了 ${wait}）`);
-      // machine-readable 的标记，不进文案。两个用处：调用方能区分「超时」和
-      // 「真的出错」；verify-live.mjs 能在线上产物里搜到它，确认这次兜底真的上线了
-      // —— push 成功不等于线上跑的是新代码。
-      err.code = NET_TIMEOUT_CODE;
-      throw err;
-    }
-    throw e;
-  } finally {
-    clearTimeout(timer);
+    // 两个来源都算超时：race 自己判的（大多数情况），以及 fetch 收到 abort 后
+    // 抢在 race 之前抛的 AbortError —— 两者都得给人话，不能把
+    // "The user aborted a request" 这种浏览器原文甩给用户。
+    if (e?.message === NET_TIMEOUT_CODE || e?.name === 'AbortError') throw timeoutError(ms);
+    throw e; // 网络本身的错误原样往上抛，别伪装成超时
   }
+  // 注：真到超时那一刻，被 race 丢下的那个 fetch promise 会一直悬着到对方服务器
+  // 关连接为止（withTimeout 已经替我们吞掉它的 rejection）。这是刻意的取舍：
+  // 用户侧必须先拿到结果，与其无限等下去，不如留一个没人听的 promise。
 }

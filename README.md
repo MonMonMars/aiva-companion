@@ -816,7 +816,16 @@ useVoice.js:244     isBusy = state === 'thinking' || state === 'speaking'
         永久 true → 麦克风按不动，也插不了话
 ```
 
-统一走 `src/lib/netFetch.js`（30 秒上限，ABORT + AbortError 转人话 + finally 清定时器）：
+统一走 `src/lib/netFetch.js`（30 秒上限）。这里有个**两层**的结构，少一层就等于没修：
+
+1. `AbortController` —— 到点把没人等的请求掐掉，别让它在后台继续占着连接；
+2. `withTimeout` 的 `Promise.race` —— **真正保证「一定会有个结果」**。
+
+反直觉的地方在第 2 层：signal 只是"通知对方取消"，要对方的 fetch 实现真的搭理它才
+会 reject。`src/lib/region.js` 里那句「RN 的 fetch 不认 AbortSignal 时也能靠
+Promise.race 兜住」说的就是这件事 —— 只发 signal 的话，在某个装聋的平台上
+await 照样永不落定。而**本地恰恰测不出这个差别**（node 和浏览器的 fetch 都认 signal），
+所以专门补了一条 stub「完全不理 signal」的用例盯着它。
 
 - `src/voice/stt.js` —— **8 处**对外请求（Whisper / Azure / SiliconFlow / ElevenLabs / Gemini 两处 / 模型列表两处）
 - `src/voice/tts.js` —— **4 处**合成请求（OpenAI / Azure 及其降级重试 / ElevenLabs）
@@ -828,9 +837,19 @@ useVoice.js:244     isBusy = state === 'thinking' || state === 'speaking'
 2. **调用方自己带了 signal 时不覆盖** —— 一次性下载要更长的等待，别替它做主。
 
 超时带 `code = 'net-timeout'`，不混进文案；`verify-live.mjs` 靠这个串在线上产物里验一次。
-`tools/test-net-timeout.mjs` 锁住契约，其中两条自检是刻意留的：
-「套了兜底的挂起请求 200ms 内会落定」和「裸的挂起 fetch 200ms 后仍未落定」——
-后一条负责证明前一条有区分力。
+`tools/test-net-timeout.mjs` 锁住契约，三条自检是刻意留的：
+
+- 「套装聋平台的请求会落定」和「**完全不理 signal** 的裸 fetch 永远不落定」——
+  后一条负责证明前一条有区分力；
+- 兜底要是被改回单层的（只发 signal、不再 race），「平台不理睬 AbortSignal」那组会立刻红。
+  这条我是真试过的：临时把实现退化回单层再跑一遍，那组整组红 —— 没验证过的测试不算数。
+
+另外测试里每个「可能永不返回」的调用都套了一层硬上限（`callCapped`）：
+直接 `await` 一个永不 settle 的 promise 只会让进程挂住，CI 上要等 job 超时才知道失败了，
+还可能看不出挂在哪一步。加个盖子，把「挂住」变成一条几秒内必然打出来的失败断言。
+
+运行时提示：`netFetch` 间接 import 了 `./withTimeout`（bundler 风格的无扩展名写法），
+所以这条测试要挂着解析器钩子跑：`node --import ./tools/ext-resolve.mjs tools/test-net-timeout.mjs`。
 
 > **又一次证明了同一件事**：这个 bug 不会自己暴露。三次都是「代码看着没问题、样例跑得通」，
 > 只在「连不上但也没被拒」这一种网络形态下发作。所以别靠读代码确认它有/没有超时，
