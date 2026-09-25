@@ -61,7 +61,10 @@ if (!FAST) STEPS.push(['bundle(web+ios)', ['tools/verify-bundle.mjs', '.', '--ke
 // 只有真在浏览器里 boot 一遍才看得见。实测证明它有牙齿的是这一条：
 // 塞一句 throw 进去，页面照样挂载成功、照样进得了 Home，但异常计数是 1 ——
 // 只看「走到 Home」会放行，加了「无未捕获异常」才拦得住。
-// ⚠️ 只挂本地、没进 CI：Chrome 路径和 swiftshader 软渲染依赖本机。
+// ⚠️ 早先这里写着「只挂本地、没进 CI：Chrome 路径和 swiftshader 依赖本机」——
+//    后来**实测推翻**：ubuntu runner 自带 Chrome 153（/usr/bin/google-chrome），
+//    软渲染也能跑。先开 continue-on-error 的观察位连绿三轮（#33/#34/#35），
+//    确认不飘之后已并进 CI 的 test job。
 if (!FAST) STEPS.push(['smoke-runtime', ['tools/smoke-runtime.mjs', '.']]);
 // 第 18 步盯的是**验收本身的健康度**：`.github/workflows/*.yml` 里引用的每个文件
 // 是否还存在、CI 跑的每一步是否本地套装里也有。
@@ -78,6 +81,13 @@ STEPS.push(['lint-ci-refs', ['tools/lint-ci-refs.mjs', '.']]);
 // 写在文件注释里的「改完记得重跑牙齿测试」不会主动提醒任何人，
 // 那就把它变成自动跑的一步 —— 改坏了这里立刻红。
 STEPS.push(['lint-ci-refs-teeth', ['tools/test-lint-ci-refs-teeth.mjs', '.']]);
+// 第 20 步验的是第 17 步**自己有没有牙齿**：把产物里的 .glb 全藏起来再跑一次冒烟，
+// 确认前四条老断言照绿放行、只有第五条「模型挂上」把得住。
+// 常驻的理由和第 19 步一样：断言被放宽时，「所有测试照旧全绿」是最容易出现的
+// 假象。写在注释里的「改完记得重跑」不会提醒任何人。
+// ⚠️ 它要再 boot 一次 Chrome 并耗满 25 秒轮询，所以放在最后 —— 打包产物留到最后
+// 才清理，正好够它用。
+STEPS.push(['smoke-runtime-teeth', ['tools/test-smoke-runtime-teeth.mjs', '.']]);
 
 const TAIL = 40;
 let fails = 0;

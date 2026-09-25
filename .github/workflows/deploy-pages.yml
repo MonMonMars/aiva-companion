@@ -112,6 +112,10 @@ jobs:
           # 验上一条**自己有没有牙齿**：造几处坏掉的 CI 配置（在沙盒副本里改），
           # 确认那条检查真会变红。规则被放宽时会先在这里露出来。
           run "lint-ci-refs-teeth" node tools/test-lint-ci-refs-teeth.mjs .
+          # 验冒烟**自己有没有牙齿**：把产物里的 .glb 全藏起来再跑一次，
+          # 确认前四条老断言照绿放行、只有「模型挂上」把得住。
+          # 断言被放宽时「所有测试照旧全绿」是最容易出现的假象，所以让它常驻。
+          run "smoke-runtime-teeth" node tools/test-smoke-runtime-teeth.mjs .
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
           exit $fails
