@@ -62,6 +62,14 @@ jobs:
               echo "| $name | ✅ |" >> $GITHUB_STEP_SUMMARY
             else
               fails=$((fails+1))
+              echo "FAIL  $name"
+              # ⚠️ 失败分支**也必须打进日志**：只写 Summary 的话，事后下载日志包
+              #    复盘时根本看不到挂的是哪一步、为什么挂（Summary 只能在网页上看，
+              #    而且换一次运行就被覆盖）。这条是 CI #37 上真实吃过亏才补的 ——
+              #    pipeline 那一步红了，日志里只有一行 exit code 1，无从下手。
+              echo "----- $name 的输出（末 40 行）-----"
+              tail -40 /tmp/step.log
+              echo "-----------------------------------"
               echo "| $name | ❌ |" >> $GITHUB_STEP_SUMMARY
               echo "<details><summary>$name 的输出（末 40 行）</summary>" >> $GITHUB_STEP_SUMMARY
               echo '```' >> $GITHUB_STEP_SUMMARY
