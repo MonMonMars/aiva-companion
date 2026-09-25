@@ -90,6 +90,9 @@ jobs:
           # 只有 CI test job 红 —— 那三行 `node --import ./tools/ext-resolve.mjs`
           # 还躺在上面的清单里没改。详见 tools/lint-ci-refs.mjs 顶部注释。
           run "lint-ci-refs" node tools/lint-ci-refs.mjs .
+          # 验上一条**自己有没有牙齿**：造几处坏掉的 CI 配置（在沙盒副本里改），
+          # 确认那条检查真会变红。规则被放宽时会先在这里露出来。
+          run "lint-ci-refs-teeth" node tools/test-lint-ci-refs-teeth.mjs .
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
           exit $fails

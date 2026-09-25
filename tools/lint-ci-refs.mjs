@@ -80,38 +80,69 @@ if (seenPaths.size === 0) {
   ok(`扫了 ${scanned} 个 workflow，校验 ${seenPaths.size} 个文件引用`);
 }
 
-// ---------- B. CI 的每一步，本地套装里都要有 ----------
-console.log('\n【B】CI test job 的步骤是否也在本地套装里');
+// ---------- B + C. 两边清单逐条对照 ----------
+console.log('\n【B】CI 的每一步，本地套装里都要有');
+console.log('【C】同名步骤的**命令行**必须一致（不是名字对上就算）');
+console.log('    C 是后来补的：A 和 B 都只比对名字，而 CI #29 的本质是**命令漂移**');
+console.log('    —— 文件名存在、步骤名也在，可两边跑的根本不是同一条命令。');
 
 const RUNTESTS = path.join(ROOT, 'tools', 'runtests.mjs');
-const localSteps = new Set();
+// 本地允许比 CI 多带的参数（逐个列出来，理由写在后面）：
+//   --keep  第 16 步要把产物留给第 17 步烟雾测试用；CI 上没有第 17 步，自然不带
+const LOCAL_ONLY_TOKENS = new Set(['--keep']);
+
+const localCmds = new Map(); // name -> tokens[]
+const ciCmds = new Map();    // name -> { yml, tokens[] }
+
 if (!fs.existsSync(RUNTESTS)) {
   fail(`找不到 ${RUNTESTS}，无法对照`);
 } else {
   const src = fs.readFileSync(RUNTESTS, 'utf8');
-  const STEP_RE = /\['([^']+)',\s*\[/g;
+  // 本地每一项都写成一行：['name', ['arg1', 'arg2']] 或 STEPS.push([...])
+  const STEP_RE = /\['([^']+)',\s*\[([^\]]*)\]\]/g;
   let m;
-  while ((m = STEP_RE.exec(src)) !== null) localSteps.add(m[1]);
-  ok(`本地套装有 ${localSteps.size} 步`);
+  while ((m = STEP_RE.exec(src)) !== null) {
+    const toks = m[2]
+      .split(',')
+      .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(Boolean);
+    localCmds.set(m[1], toks);
+  }
+  ok(`本地套装有 ${localCmds.size} 步`);
 
-  const RUN_RE = /run\s+"([^"]+)"\s+node\s/g;
-  const ciSteps = new Set();
+  // CI 每一行长这样：run "<名字>" node <脚本> [参数...]
+  const RUN_RE = /run\s+"([^"]+)"\s+node\s+(.+?)\s*$/gm;
   for (const yml of fs.readdirSync(WF_DIR).filter((f) => /\.ya?ml$/.test(f))) {
     const text = fs.readFileSync(path.join(WF_DIR, yml), 'utf8');
     RUN_RE.lastIndex = 0;
     let mm;
-    while ((mm = RUN_RE.exec(text)) !== null) ciSteps.add(`${yml}|${mm[1]}`);
-  }
-  for (const key of ciSteps) {
-    const [yml, name] = key.split('|');
-    if (!localSteps.has(name)) {
-      fail(`${yml} 里的步骤「${name}」在本地套装里没有 —— 本地绿 ≠ CI 绿`);
+    while ((mm = RUN_RE.exec(text)) !== null) {
+      ciCmds.set(mm[1], { yml, toks: mm[2].trim().split(/\s+/).filter(Boolean) });
     }
   }
-  if (ciSteps.size) ok(`CI 共 ${ciSteps.size} 步，全部能在本地找到`);
 
-  const ciNames = new Set([...ciSteps].map((k) => k.split('|')[1]));
-  const localOnly = [...localSteps].filter((n) => !ciNames.has(n));
+  for (const [name, ci] of ciCmds) {
+    if (!localCmds.has(name)) {
+      fail(`${ci.yml} 里的步骤「${name}」在本地套装里没有 —— 本地绿 ≠ CI 绿`);
+    }
+  }
+  if (ciCmds.size) ok(`CI 共 ${ciCmds.size} 步，全部能在本地找到`);
+
+  const before = failures;
+  for (const [name, ci] of ciCmds) {
+    const loc = localCmds.get(name);
+    if (!loc) continue;
+    const extraLocal = loc.filter((t) => !ci.toks.includes(t));
+    const extraCi = ci.toks.filter((t) => !loc.includes(t));
+    if (extraCi.length || extraLocal.some((t) => !LOCAL_ONLY_TOKENS.has(t))) {
+      fail(`${ci.yml} 的步骤「${name}」两边命令不一致 —— 同一个名字跑的不是同一条命令`);
+      console.log(`        本地: node ${loc.join(' ')}`);
+      console.log(`        CI  : node ${ci.toks.join(' ')}`);
+    }
+  }
+  if (failures === before) ok('每一步的命令行两边完全一致');
+
+  const localOnly = [...localCmds.keys()].filter((n) => !ciCmds.has(n));
   if (localOnly.length) {
     console.log(`  ℹ️ 只在本机跑的步骤（正常，但要有理由）：${localOnly.join(' / ')}`);
   }

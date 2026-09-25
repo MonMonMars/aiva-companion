@@ -71,6 +71,13 @@ if (!FAST) STEPS.push(['smoke-runtime', ['tools/smoke-runtime.mjs', '.']]);
 // 没人发现的原因：grep 默认跳过隐藏目录，`.github/` 从来没被扫过；
 // 而 CI 跑的和本地跑的是两份互不相干的清单。**这一步把两份清单对起来。**
 STEPS.push(['lint-ci-refs', ['tools/lint-ci-refs.mjs', '.']]);
+// 第 19 步验的是第 18 步**自己有没有牙齿**：在沙盒副本上改一行配置，
+// 回头确认 A / B / C 三项真的会变红。
+// 它要常驻的理由：第 18 步的规则一旦被放宽（比如为了消误报改了某条正则），
+// 最可能发生的事是「拦截能力被顺手改掉，而所有测试照旧全绿」。
+// 写在文件注释里的「改完记得重跑牙齿测试」不会主动提醒任何人，
+// 那就把它变成自动跑的一步 —— 改坏了这里立刻红。
+STEPS.push(['lint-ci-refs-teeth', ['tools/test-lint-ci-refs-teeth.mjs', '.']]);
 
 const TAIL = 40;
 let fails = 0;
@@ -102,8 +109,22 @@ for (const [name, args] of STEPS) {
 // 不进 git，但会占地方，也可能让人误以为是正品 dist。
 // 按前缀扫而不是写死两个名字 —— 早期版本产出过不带平台后缀的 dist-localcheck/，
 // 写死的话那种残留永远清不掉（git 又看不见它，最后就只能手工删带 EBUSY 的目录）。
+// ⚠️ 删目录这件事会**卡住不返回** —— 实测过：19 步全部 PASS 之后进程就是不动了，
+//   既有的锈迹目录（dist-final 那批 EBUSY 空壳）和刚被 Chrome 打开过的产物都可能触发。
+//   所以这里不直接 rmSync：把它丢给子进程做，并给一个硬上限（10 秒）。
+//   超时也不要阻止收工，记一条警告就行 —— 反正这些目录本来就 match .gitignore。
+//   一句话：卡在倒数第一步比失败还可恨 —— 既没有红，也没有结论。
+function rmTree(rel) {
+  const abs = R(rel);
+  const script = `require('fs').rmSync(${JSON.stringify(abs)}, { recursive: true, force: true })`;
+  const r = spawnSync(process.execPath, ['-e', script], { encoding: 'utf8', timeout: 10000 });
+  const gone = !fs.existsSync(abs);
+  if (gone) process.stdout.write(`        清理 ${rel}\n`);
+  else process.stdout.write(`  ⚠️ 清理 ${rel} 没成（${r.error ? r.error.code || r.error.message : `exit=${r.status}`}）—— 留着，不挡收工\n`);
+}
+
 for (const d of fs.readdirSync(ROOT)) {
-  if (d.startsWith('dist-localcheck')) fs.rmSync(R(d), { recursive: true, force: true });
+  if (d.startsWith('dist-localcheck')) rmTree(d);
 }
 
 process.stdout.write(`\n${STEPS.length} 步，失败 ${fails} 项\n`);
