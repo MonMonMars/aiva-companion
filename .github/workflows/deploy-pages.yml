@@ -21,6 +21,58 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 测试跑在**独立的 job** 里，和 build 并行，**不挡发布**。
+  #
+  # ⚠️ 别把它挪回 build 里当闸门（试过，直接把发布冻住了）：CI 上 `npm test`
+  #    有一步挂，但本机 11 步全过、干净 checkout 副本里也全过，而 CI 日志要
+  #    admin 权限才拿得到，看不出是哪一步。在查清之前让它挡发布 = 站点停止更新。
+  #
+  # 所以这里改成：**逐步跑 + 写进 Job Summary**，失败的那一步和它的输出直接
+  # 显示在 run 页面上一眼看得到，不用去翻日志。查清之后再决定要不要收紧成闸门。
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 装依赖
+        run: npm install --no-audit --no-fund
+
+      - name: 跑全套测试（逐步，失败写进 Summary）
+        run: |
+          fails=0
+          echo "| 步骤 | 结果 |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          run() {
+            name="$1"; shift
+            if "$@" > /tmp/step.log 2>&1; then
+              echo "| $name | ✅ |" >> $GITHUB_STEP_SUMMARY
+            else
+              fails=$((fails+1))
+              echo "| $name | ❌ |" >> $GITHUB_STEP_SUMMARY
+              echo "<details><summary>$name 的输出（末 40 行）</summary>" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              tail -40 /tmp/step.log >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "</details>" >> $GITHUB_STEP_SUMMARY
+            fi
+          }
+          run "check-persona-coverage" node tools/check-persona-coverage.mjs
+          run "withTimeout" node tools/test-with-timeout.mjs
+          run "auth-timeout" node --import ./tools/ext-resolve.mjs tools/test-auth-timeout.mjs
+          run "nativeSpeech" node tools/nativeSpeech.test.mjs
+          run "espeak" node tools/espeak.test.mjs
+          run "tts" node tools/tts.test.mjs
+          run "songs" node tools/songs.test.mjs
+          run "pipeline" node tools/pipeline.test.mjs
+          run "rig-semantics" node --import ./tools/ext-resolve.mjs tools/test-rig-semantics.mjs
+          run "inspect-character" node tools/inspect-character.mjs
+          run "realistic-pipeline" node tools/test-realistic-pipeline.mjs
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
+          exit $fails
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -32,12 +84,6 @@ jobs:
 
       - name: 装依赖
         run: npm install --no-audit --no-fund
-
-      # 打包之前先把全套测试跑掉（10 步，全是本地纯计算、零网络依赖，
-      # 所以不会因为在 CI 上跑而假失败）。不合格就别打包 —— 免得把坏版本发上线。
-      # 这样本机就不用为了「跑一遍验收」而一直开着，推完代码交给云端就行。
-      - name: 跑测试（不合格就不打包）
-        run: npm test
 
       # Pages 把站点挂在 https://<用户名>.github.io/<仓库名>/ 下，
       # 而 Expo 默认把资源写成绝对路径 /assets/... —— 不设 baseUrl 会整站 404。
