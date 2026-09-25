@@ -47,6 +47,9 @@ jobs:
           run() {
             name="$1"; shift
             if "$@" > /tmp/step.log 2>&1; then
+              # 逐步结果**也要打进日志**：只写 Summary 的话，成功时日志里一片空白，
+              # 事后想确认"这一步真的在 CI 上跑过"就没有任何证据（日志包现在能下载）。
+              echo "PASS  $name"
               echo "| $name | ✅ |" >> $GITHUB_STEP_SUMMARY
             else
               fails=$((fails+1))
