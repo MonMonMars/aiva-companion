@@ -219,16 +219,23 @@ try {
   await send('Emulation.setDeviceMetricsOverride', { width: 900, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
 
+  // ⚠️ 下面三段轮询的**上限全是手写的**（30×700ms / 12 轮 / 25×1000ms），
+  //    而「等 Chrome 那个 16 秒上限」就是因为没量过常态、被 runner 一抖捅穿的
+  //    （CI #41）。同一个坑不踩第二次：三段都记下实际耗时，并写进末尾那句总结，
+  //    这样以后每次运行白留三个数，哪个余量薄了一眼看得出来。
   // ---- 断言 1：React 有没有真的挂载（挂载失败 = 白屏，#root 一个子节点都没有）----
+  const tMount0 = Date.now();
   let nodes = 0;
   for (let i = 0; i < 30; i++) {
     nodes = Number(await ev("(document.getElementById('root')||{children:[]}).children.length")) || 0;
     if (nodes > 0) break;
     await sleep(700);
   }
+  const tMount = ((Date.now() - tMount0) / 1000).toFixed(1);
 
   // ---- 断言 4：标题页 → 角色选择 → Home ----
   // 每一屏的停留都给足时间（软渲染 + 首包解析，实测要十几秒）
+  const tHome0 = Date.now();
   let reachedHome = false;
   for (let round = 0; round < 12 && !reachedHome; round++) {
     if (await ev('!!(globalThis.__aivaDebug)')) {
@@ -252,6 +259,7 @@ try {
     }
     await sleep(1200);
   }
+  const tHome = ((Date.now() - tHome0) / 1000).toFixed(1);
 
   // ---- 断言 5：模型真的挂上了 ----------------------------------------------
   // 为什么必须有它：把产物里所有 .glb 改名藏起来重跑一遍，前四条**全部照绿** ——
@@ -276,14 +284,20 @@ try {
   // ⚠️ 必须轮询等，不能读一次就下结论：__aivaDebug 挂上来只说明组件挂载完成，
   //    几 MB 的 GLB 还在解析/绑定（软渲染下更慢）。读早了拿到 0 就是假红 ——
   //    一个会随机变红的闸门比没有闸门更糟。给足 25 秒，等不到才算真没挂上。
+  const tModel0 = Date.now();
   let model = null;
   for (let i = 0; i < 25; i++) {
     model = await ev(MODEL_EXPR);
     if (model && model.hasRig === true) break;
     await sleep(1000);
   }
+  const tModel = ((Date.now() - tModel0) / 1000).toFixed(1);
+  // 失败时走的是「末 40 行」整段，所以单独打一行（含上限，好对照余量）；
+  // 成功时靠末尾那句总结 —— 那边只留 6 行，塞不进别处。
+  const TIMING = `端口 ${waited}s｜挂载 ${tMount}s/21s｜Home ${tHome}s｜模型 ${tModel}s/25s`;
 
   console.log(`产物目录：${path.relative(ROOT, DIST)}`);
+  console.log(`各段耗时：${TIMING}`);
   console.log(`root 子节点数：${nodes}`);
   console.log(`未捕获异常：${exceptions.length}`);
   console.log(`console error：${errors.length}`);
@@ -313,8 +327,8 @@ try {
   // ⚠️ 等待秒数**必须写进这一行**，不能只打在开头：CI 的 run() 成功时只 tail 末 6 行，
   //    开头那句会被整段切掉 —— #44 上实测被切，白等一轮 CI 才发现。
   //    而这个数恰恰只在**成功**时才值得看（失败时有末 40 行全文）。
-  const slow = Number(waited) > 10;
-  console.log(`\n[smoke-runtime] PASS — ${checks.map(([, n]) => n).join('、')}（Chrome 端口 ${waited}s${slow ? ' ⚠️偏慢' : ''}）`);
+  const slow = Number(waited) > 10 || Number(tModel) > 10;
+  console.log(`\n[smoke-runtime] PASS — ${checks.map(([, n]) => n).join('、')}（${TIMING}${slow ? ' ⚠️偏慢' : ''}）`);
 } catch (err) {
   console.log(`\n[smoke-runtime] FAIL — 探针自身出错：${err?.message || err}`);
   ws?.close();
