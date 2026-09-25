@@ -1009,6 +1009,43 @@ root 子节点数：1        ← 挂载正常
 软渲染都依赖这台机器，在 ubuntu runner 上能不能跑还得先验证。
 它证明「boot 成功、能进主界面」，证明不了交互全对（那是 `cdp-*` 那批专项探针的事）。
 
+### 6.14 第四层：本地全绿 ≠ CI 绿（CI #29，本地 17 步全 PASS 却红了）
+
+前三轮补的都是「代码缺什么」，这一层不一样 —— 缺的是**验收本身的配置**没人对账。
+
+合并两套 loader 删掉 `tools/ext-resolve.mjs` 之后：本地 17 步全 PASS、
+`build` / `deploy` 也绿，**只有 `test` job 红**。原因在三行：
+
+```yaml
+# .github/workflows/deploy-pages.yml（当时忘了改）
+run "auth-timeout" node --import ./tools/ext-resolve.mjs tools/test-auth-timeout.mjs
+run "net-timeout"   node --import ./tools/ext-resolve.mjs tools/test-net-timeout.mjs
+run "rig-semantics" node --import ./tools/ext-resolve.mjs tools/test-rig-semantics.mjs
+```
+
+**为什么当时一次都没被发现**，是两个缺口叠在一起：
+
+| 缺口 | 说明 |
+|---|---|
+| grep 默认**跳过隐藏目录** | 「扫全仓库引用」从来没扫到过 `.github/`，而且**不报任何错** —— 少扫了一整类最关键的文件，看起来和扫干净了没区别 |
+| **本地跑的和 CI 跑的是两份互不相干的清单** | 本地的是 `tools/runtests.mjs` 里的数组，CI 的是 workflow 里的一串 `run`，此前没有任何一步在对照它们 |
+
+**补的检查**：`tools/lint-ci-refs.mjs`（`runtests` 第 18 步 + CI test job + `npm run lint`），
+它显式打开 `.github/workflows/`（不依赖任何全局搜索的默认行为），做两件事：
+
+- **A** workflow 里引用的每个仓库文件必须在磁盘上存在（还会顺手提示可疑的替代文件名）
+- **B** CI 跑的每一步，本地套装里也必须有（反向允许：`smoke-runtime` 那种依赖本机的步骤只列出来）
+
+**牙齿测试**（两条都如期 exit=1，且 workflow 还原到逐字节一致）：
+
+| 改法 | 结果 |
+|---|---|
+| 把引用改成不存在的 `tools/nope-resolve.mjs` | ✗ 报错并指出是哪个文件不存在 |
+| 把步骤名改成 `auth-timeout-RENAMED` | ✗ 报「步骤不在本地套装里 —— 本地绿 ≠ CI 绿」 |
+
+> 这一步又一次印证了第 6.11 起那条规矩：**防线只有跑在 CI 上才算数**，
+> 而且「本地绿」的定义里必须包含「CI 那份清单和我这份是同一份」。
+
 ---
 
 ## 七、几个已经做进去的取舍

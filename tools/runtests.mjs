@@ -63,6 +63,14 @@ if (!FAST) STEPS.push(['bundle(web+ios)', ['tools/verify-bundle.mjs', '.', '--ke
 // 只看「走到 Home」会放行，加了「无未捕获异常」才拦得住。
 // ⚠️ 只挂本地、没进 CI：Chrome 路径和 swiftshader 软渲染依赖本机。
 if (!FAST) STEPS.push(['smoke-runtime', ['tools/smoke-runtime.mjs', '.']]);
+// 第 18 步盯的是**验收本身的健康度**：`.github/workflows/*.yml` 里引用的每个文件
+// 是否还存在、CI 跑的每一步是否本地套装里也有。
+// 存在的理由是一次真事故（CI #29）：合并两套 loader 删掉 ext-resolve.mjs 之后，
+// 本地 17 步全绿、build/deploy 也绿，只有 CI test job 红 —— 那三行
+// `node --import ./tools/ext-resolve.mjs` 还躺在 workflow 里没改。
+// 没人发现的原因：grep 默认跳过隐藏目录，`.github/` 从来没被扫过；
+// 而 CI 跑的和本地跑的是两份互不相干的清单。**这一步把两份清单对起来。**
+STEPS.push(['lint-ci-refs', ['tools/lint-ci-refs.mjs', '.']]);
 
 const TAIL = 40;
 let fails = 0;

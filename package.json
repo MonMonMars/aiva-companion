@@ -29,7 +29,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "export:web": "expo export --platform web",
-    "lint": "node tools/lint-imports.mjs . && node tools/lint-styles.mjs . && node tools/lint-net-calls.mjs",
+    "lint": "node tools/lint-imports.mjs . && node tools/lint-styles.mjs . && node tools/lint-net-calls.mjs && node tools/lint-ci-refs.mjs .",
     "test": "node tools/runtests.mjs",
     "test:fast": "node tools/runtests.mjs --fast",
     "verify:bundle": "node tools/verify-bundle.mjs",

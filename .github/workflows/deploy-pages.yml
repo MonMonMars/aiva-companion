@@ -60,14 +60,14 @@ jobs:
           }
           run "check-persona-coverage" node tools/check-persona-coverage.mjs
           run "withTimeout" node tools/test-with-timeout.mjs
-          run "auth-timeout" node --import ./tools/ext-resolve.mjs tools/test-auth-timeout.mjs
-          run "net-timeout" node --import ./tools/ext-resolve.mjs tools/test-net-timeout.mjs
+          run "auth-timeout" node --import ./tools/src-resolve.mjs tools/test-auth-timeout.mjs
+          run "net-timeout" node --import ./tools/src-resolve.mjs tools/test-net-timeout.mjs
           run "nativeSpeech" node tools/nativeSpeech.test.mjs
           run "espeak" node tools/espeak.test.mjs
           run "tts" node tools/tts.test.mjs
           run "songs" node tools/songs.test.mjs
           run "pipeline" node tools/pipeline.test.mjs
-          run "rig-semantics" node --import ./tools/ext-resolve.mjs tools/test-rig-semantics.mjs
+          run "rig-semantics" node --import ./tools/src-resolve.mjs tools/test-rig-semantics.mjs
           run "inspect-character" node tools/inspect-character.mjs
           run "realistic-pipeline" node tools/test-realistic-pipeline.mjs
           run "lint-imports" node tools/lint-imports.mjs .
@@ -84,6 +84,12 @@ jobs:
           # web 只有 546（相差的都是只有打原生才走到的代码）。缺了成员实现
           # （如 Avatar3D.native.js）时，web 打包照样全绿。
           run "bundle(web+ios)" node tools/verify-bundle.mjs .
+          # 这一条盯的是**验收本身**：workflow 里引用的文件是否还在、
+          # CI 的每一步是否本地套装里也有。
+          # 起因是把两套 loader 合并删掉 ext-resolve.mjs 之后，本地全绿、
+          # 只有 CI test job 红 —— 那三行 `node --import ./tools/ext-resolve.mjs`
+          # 还躺在上面的清单里没改。详见 tools/lint-ci-refs.mjs 顶部注释。
+          run "lint-ci-refs" node tools/lint-ci-refs.mjs .
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
           exit $fails
