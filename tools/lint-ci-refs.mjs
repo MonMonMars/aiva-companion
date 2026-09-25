@@ -114,19 +114,37 @@ if (!fs.existsSync(RUNTESTS)) {
   const RUN_RE = /run\s+"([^"]+)"\s+node\s+(.+?)\s*$/gm;
   for (const yml of fs.readdirSync(WF_DIR).filter((f) => /\.ya?ml$/.test(f))) {
     const text = fs.readFileSync(path.join(WF_DIR, yml), 'utf8');
-    RUN_RE.lastIndex = 0;
-    let mm;
-    while ((mm = RUN_RE.exec(text)) !== null) {
-      ciCmds.set(mm[1], { yml, toks: mm[2].trim().split(/\s+/).filter(Boolean) });
+    // ★ 跟上面 A 项一样要跳过注释行，理由同出一辙：注释里写「用法：
+    //   run "名字" node ...」这种**说明文字**会被当成真步骤扫进来。
+    //   2026-09-25 真发生过一次：我在 deploy job 的注释里解释「为什么这条
+    //   不写成 run "名字" node ... 的形式」，那句解释自己被扫成一个名叫
+    //   「名字」的步骤，这一步当场变红 —— 而它根本不存在于任何 job 里。
+    //   真正的执行永远写在 `run:` 里，注释不可能是要跑的步骤。
+    for (const line of text.split('\n')) {
+      if (/^\s*#/.test(line)) continue;
+      RUN_RE.lastIndex = 0;
+      const mm = RUN_RE.exec(line);
+      if (mm) ciCmds.set(mm[1], { yml, toks: mm[2].trim().split(/\s+/).filter(Boolean) });
     }
   }
 
+  // ⚠️ B/C 是「扫到什么就对什么」，一旦扫到 0 条就会**静默全绿** ——
+  //    哪天 RUN_RE 写坏了（或 workflow 改了写法），这一整层检查就成了摆设
+  //    而且不报任何错。所以「本地有步骤、CI 一条都没扫到」必须当失败。
+  if (localCmds.size > 0 && ciCmds.size === 0) {
+    fail(`一个 CI 步骤都没扫到，本地套装里却有 ${localCmds.size} 步 —— 多半是 RUN_RE 没匹配上，B/C 项等于没跑`);
+  }
+
+  let missing = 0;
   for (const [name, ci] of ciCmds) {
     if (!localCmds.has(name)) {
       fail(`${ci.yml} 里的步骤「${name}」在本地套装里没有 —— 本地绿 ≠ CI 绿`);
+      missing++;
     }
   }
-  if (ciCmds.size) ok(`CI 共 ${ciCmds.size} 步，全部能在本地找到`);
+  // 只在**真的一个都没缺**时才说这句。早先它跟上面的 ✗ 并排打印，
+  //    出现过「✗ 步骤 X 在本地没有」下面紧接「✓ 全部能在本地找到」的假绿。
+  if (ciCmds.size && !missing) ok(`CI 共 ${ciCmds.size} 步，全部能在本地找到`);
 
   const before = failures;
   for (const [name, ci] of ciCmds) {
@@ -140,7 +158,8 @@ if (!fs.existsSync(RUNTESTS)) {
       console.log(`        CI  : node ${ci.toks.join(' ')}`);
     }
   }
-  if (failures === before) ok('每一步的命令行两边完全一致');
+  // 同理，扫到 0 条时不许报「完全一致」—— 那是没比过，不是比过了。
+  if (failures === before && ciCmds.size) ok('每一步的命令行两边完全一致');
 
   const localOnly = [...localCmds.keys()].filter((n) => !ciCmds.has(n));
   if (localOnly.length) {

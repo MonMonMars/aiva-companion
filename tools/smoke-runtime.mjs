@@ -29,10 +29,16 @@ import { spawn } from 'node:child_process';
 const ROOT = path.resolve(process.argv[2] || '.');
 const argv = process.argv.slice(3);
 const dirArg = argv.includes('--dir') ? argv[argv.indexOf('--dir') + 1] : null;
+// ⚠️ --url：不起本地静态服务器，直接打**线上**那个网址。
+//    为什么要有它：CI 的 deploy job 只核对新包有没有上线（抓一个文件比对标记），
+//    **从来没人验证过线上网址真的 boot 得起来** —— baseUrl（仓库名子路径）、
+//    资源路径、Pages 给的 MIME 类型（.glb 尤其）这些只有真跑一遍才知道。
+//    「能打包」≠「能跑起来」≠「线上能跑起来」，这是第三层。
+const liveUrl = argv.includes('--url') ? argv[argv.indexOf('--url') + 1] : null;
 
 // 优先用刚打出来的那份；没有就退回 npm run export:web 的 dist
 const CANDIDATES = [dirArg, 'dist-localcheck-web', 'dist'].filter(Boolean);
-const DIST = CANDIDATES.map((d) => path.resolve(ROOT, d)).find((d) => {
+const DIST = liveUrl ? null : CANDIDATES.map((d) => path.resolve(ROOT, d)).find((d) => {
   try {
     return fs.statSync(d).isDirectory() && fs.existsSync(path.join(d, 'index.html'));
   } catch {
@@ -40,7 +46,14 @@ const DIST = CANDIDATES.map((d) => path.resolve(ROOT, d)).find((d) => {
   }
 });
 
-if (!DIST) {
+if (liveUrl) {
+  // ⚠️ 这句话必须打出来：线上模式验的是**已经部署上去的那份**，不是你本地刚改的
+  //    代码。本地改动没推、没部署完之前，这条绿了**不代表你的改动没问题** ——
+  //    它就是用来回答「线上现在是不是好的」，别拿它当本地改动的验收。
+  console.log(`⚠️ 线上模式：验的是已部署的 ${liveUrl}，不是本地这份代码`);
+}
+
+if (!DIST && !liveUrl) {
   console.log('✗ 找不到可跑的产物，试过：\n  ' + CANDIDATES.join('\n  ') + '\n  先跑 npm run export:web');
   process.exit(1);
 }
@@ -65,7 +78,7 @@ const MIME = {
   '.gz': 'application/gzip', '.br': 'application/brotli',
 };
 
-const srv = http.createServer((req, res) => {
+const srv = liveUrl ? null : http.createServer((req, res) => {
   let p = decodeURIComponent(req.url.split('?')[0]);
   if (p === '/') p = '/index.html';
   const f = path.join(DIST, p);
@@ -80,7 +93,7 @@ const srv = http.createServer((req, res) => {
   });
   fs.createReadStream(f).pipe(res);
 });
-await new Promise((r) => srv.listen(PORT, '127.0.0.1', r));
+if (srv) await new Promise((r) => srv.listen(PORT, '127.0.0.1', r));
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const profile = path.join(process.env.TEMP || '/tmp', `smoke-${Date.now()}`);
@@ -217,7 +230,7 @@ try {
   await send('Runtime.enable');
   await send('Page.enable');
   await send('Emulation.setDeviceMetricsOverride', { width: 900, height: 900, deviceScaleFactor: 1, mobile: false });
-  await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+  await send('Page.navigate', { url: liveUrl || `http://127.0.0.1:${PORT}/` });
 
   // ⚠️ 下面三段轮询的**上限全是手写的**（30×700ms / 20 轮 / 25×1000ms），
   //    而「等 Chrome 那个 16 秒上限」就是因为没量过常态、被 runner 一抖捅穿的
@@ -308,7 +321,7 @@ try {
   // 成功时靠末尾那句总结 —— 那边只留 6 行，塞不进别处。
   const TIMING = `端口 ${waited}s｜挂载 ${tMount}s/21s｜Home ${tHome}s/${homeRounds}轮(上限20)｜模型 ${tModel}s/25s`;
 
-  console.log(`产物目录：${path.relative(ROOT, DIST)}`);
+  console.log(`跑的是：${liveUrl ? '线上 ' + liveUrl : '产物 ' + path.relative(ROOT, DIST)}`);
   console.log(`各段耗时：${TIMING}`);
   console.log(`root 子节点数：${nodes}`);
   console.log(`未捕获异常：${exceptions.length}`);
@@ -330,7 +343,7 @@ try {
 
   ws.close();
   chrome.kill();
-  srv.close();
+  srv?.close();
 
   if (bad.length) {
     console.log(`\n[smoke-runtime] FAIL — ${bad.map(([, n]) => n).join('、')} 没过`);
@@ -345,6 +358,6 @@ try {
   console.log(`\n[smoke-runtime] FAIL — 探针自身出错：${err?.message || err}`);
   ws?.close();
   chrome.kill();
-  srv.close();
+  srv?.close();
   process.exit(1);
 }

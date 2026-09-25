@@ -231,3 +231,25 @@ jobs:
           done
           echo "12 次都没通过：线上跑的可能还是旧包，需要人工看一眼"
           exit 1
+
+      # 「能打包」≠「能跑起来」≠「**线上**能跑起来」—— 这是第三层，前两层分别
+      # 由 test job 的 verify-bundle / smoke-runtime 守着，而线上这一层此前**没人管**：
+      # 上面那步只核对「新包有没有上线」（抓 bundle 比标记串），从来没验证过线上
+      # 网址真的 boot 得起来 —— baseUrl 的仓库名子路径、资源路径、Pages 给的 MIME
+      # （.glb 尤其）只有真开一遍浏览器才知道。
+      # 放在上面之后：那一步已经轮询到新包出现，CDN 传播延迟在那儿就消化掉了。
+      #
+      # ⚠️ 先当**观察位**（continue-on-error），跟上面 smoke-runtime 当初一样的做法：
+      #    会随机变红的闸门比没有闸门更糟 —— 它教会所有人「红了就重跑一次」。
+      #    先跑几轮确认不飘，再摘掉 continue-on-error 收成真闸门。
+      #    （牙齿已验：给个线上不存在的路径，它 71 秒内 FAIL 退出码 1，
+      #      React 挂载 / 走到 Home / 模型挂上 三条同时红，不是无脑放行。）
+      #
+      # ⚠️ 它验的是**已经部署上去的那份**，不是本地改动 —— 绿了不代表本地改动没问题。
+      #    所以**故意不给它在本地套装里配同名步骤**：本地跑这条只会验到线上那份，
+      #    放进本地套装等于造一个假的绿。（也因此它写的是普通 run: 而不是 test job
+      #    里那个 `run "名字" node ...` 包装器 —— 后者会被 lint-ci-refs 的 B/C 项
+      #    要求本地也有同名步骤，这条不适用。）
+      - name: 线上冒烟（网址真的 boot 得起来）
+        continue-on-error: true
+        run: node tools/smoke-runtime.mjs . --url ${{ steps.deployment.outputs.page_url }}

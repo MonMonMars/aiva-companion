@@ -118,6 +118,29 @@ const scenarios = [
     expectText: '两边命令不一致',
     mutate: () => replaceOnce(RT, /\['withTimeout', \['tools\/test-with-timeout\.mjs'\]\]/, "['withTimeout', ['tools/test-with-timeout.mjs', '--verbose']]"),
   },
+  {
+    // 2026-09-25 真踩过：我在 deploy job 的注释里写「为什么这条不写成
+    // run "名字" node ... 的形式」，那句解释自己被 RUN_RE 扫成一个名叫
+    // 「名字」的步骤，第 18 步当场变红 —— 而它根本不存在于任何 job 里。
+    // RUN_RE 必须跟 FILE_RE 一样跳过注释行，这条盯着的就是那个「一样」。
+    id: 'D1 ★ workflow 注释里提到 run "名字" node ... 不该被当成一步',
+    expect: 0,
+    // 只有「一个都没缺」时那句才会打印 —— 注释若被算进去，它就不出现了
+    expectText: '全部能在本地找到',
+    mutate: () => fs.appendFileSync(WF, '\n# 用法：run "注释里的名字" node tools/nope.mjs\n'),
+  },
+  {
+    // B/C 是「扫到什么就对什么」，扫到 0 条时会**静默全绿**：
+    // 实测旧版在这种仓库上 exit=0，一整层检查等于没跑。必须当场响。
+    id: 'D2 ★ 一条都扫不到时必须响（否则 B/C 静默全绿）',
+    expect: 1,
+    expectText: '一个 CI 步骤都没扫到',
+    mutate: () => {
+      const t = fs.readFileSync(WF, 'utf8');
+      if (!/run "/.test(t)) throw new Error('沙盒里找不到 `run "` 形式，这个场景没验到东西');
+      fs.writeFileSync(WF, t.replace(/run "/g, 'runx "'));
+    },
+  },
 ];
 
 let count = 0;
