@@ -13,7 +13,7 @@
 // 转成轴角，看它是不是该绕的那根世界轴、转了多少度、方向对不对。
 // 另外再补三条物理判据（手到底往哪走），防止"轴对了但符号反了"蒙混过关。
 //
-// 跑：node --import ./tools/ext-resolve.mjs tools/test-rig-semantics.mjs
+// 跑：node --import ./tools/src-resolve.mjs tools/test-rig-semantics.mjs
 
 import * as THREE from 'three';
 // ⚠️ 这两行原来写的是裸路径（'../src/three/rigDriver'），在 Node 的 ESM 下必须带扩展名 ——

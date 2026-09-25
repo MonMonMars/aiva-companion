@@ -611,10 +611,15 @@ ERR_MODULE_NOT_FOUND: Cannot find module '../src/three/rigDriver'
 所以仓库里准备了 loader，**不改源码**就能让 Node 认：
 
 ```bash
-node --import ./tools/src-resolve-loader.mjs tools/test-rig-semantics.mjs
+node --import ./tools/src-resolve.mjs tools/test-rig-semantics.mjs
 # 等价简写：
 node tools/register-src.mjs tools/test-rig-semantics.mjs
 ```
+
+> 这是仓库里**唯一**的一份解析钩子。2026-09-25 之前存在两套做同一件事的 loader
+> （`ext-resolve-hooks.mjs` 和 `src-resolve-loader.mjs`），各缺一半能力：
+> 前者能读裸 JSON import，后者能在 Node 原生解析之后再兜底（不遮蔽包入口和条件导出）。
+> 现在合并成 `src-resolve.mjs`(入口) + `src-resolve-hooks.mjs`(实现)，行为取两者**并集**。
 
 自己写这类 loader 有两个坑，而且**都是静默失效、一句错都不报**：
 
@@ -799,10 +804,12 @@ promise 200ms 后仍未落定），并把 `db-timeout` 加进了 `verify-live.mj
 > **auth 和 database 两边都没有超时。** 判据是「不传 timeout 会走哪条分支」，
 > 不是「文件里有没有 timeout 这个词」。
 
-> 顺带：为了让这些模块能在 node 里被单测，`tools/ext-resolve-hooks.mjs` 补了一个
+> 顺带：为了让这些模块能在 node 里被单测，`tools/src-resolve-hooks.mjs` 里有一个
 > `load` 钩子，把裸 `import cfg from './xxx.json'` 当成 `export default {...}` 喂回去
-> （原来 resolve 故意跳过 .json，否则 `./foo` 会被误解析成 `./foo.json`）。
+> （配套的 resolve 故意不把 .json 当候选，否则 `./foo` 会被误解析成 `./foo.json`）。
 > 有它之后，凡是间接 import 了 `cloudConfig.json` 的模块才第一次能进测试。
+> 这条能力很容易在重构 loader 时漏掉：`cloudClient.js` 第 11 行就是裸 JSON import，
+> 摘掉 load 钩子只有 `test-auth-timeout` 一条会红，其它测试全绿。
 
 ### 6.9 第三次遇到同一个坑：语音链路（这次在核心交互上）
 
@@ -854,7 +861,9 @@ await 照样永不落定。而**本地恰恰测不出这个差别**（node 和�
 还可能看不出挂在哪一步。加个盖子，把「挂住」变成一条几秒内必然打出来的失败断言。
 
 运行时提示：`netFetch` 间接 import 了 `./withTimeout`（bundler 风格的无扩展名写法），
-所以这条测试要挂着解析器钩子跑：`node --import ./tools/ext-resolve.mjs tools/test-net-timeout.mjs`。
+所以这条测试要挂着解析器钩子跑：`node --import ./tools/src-resolve.mjs tools/test-net-timeout.mjs`。
+（顺带纠正一个想当然：别因为它只 import 了带扩展名的 `netFetch.js` 就以为用不到钩子 ——
+那条链路上还有无扩展名的 `./withTimeout`。不挂钩子跑出来是 ERR_MODULE_NOT_FOUND，实测。）
 
 > **又一次证明了同一件事**：这个 bug 不会自己暴露。三次都是「代码看着没问题、样例跑得通」，
 > 只在「连不上但也没被拒」这一种网络形态下发作。所以别靠读代码确认它有/没有超时，

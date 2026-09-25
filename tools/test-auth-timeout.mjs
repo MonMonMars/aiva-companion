@@ -16,7 +16,7 @@
  *    `timeout` 字样是 supabase 留的可选能力，没人用。
  *    所以 auth 和 database **两边都要兜**，只兜 auth 等于只堵了进门那一段。
  *
- * 用法：node --import ./tools/ext-resolve.mjs tools/test-auth-timeout.mjs
+ * 用法：node --import ./tools/src-resolve.mjs tools/test-auth-timeout.mjs
  */
 import { authCall, dbCall, authErrorMessage, AUTH_TIMEOUT_MS, DB_TIMEOUT_MS } from '../src/lib/cloudClient.js';
 

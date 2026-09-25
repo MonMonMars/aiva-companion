@@ -14,7 +14,7 @@
  *
  *  坑 2：src/ 里全是 bundler 风格的无扩展名导入（`'../lib/netFetch'`），
  *       Metro/Expo 照单全收，node 的 ESM 解析器却要求写全 `.js`。
- *       这件事交给 tools/src-resolve-loader.mjs —— 仓库里现成的那个 loader，
+ *       这件事交给 tools/src-resolve.mjs —— 仓库里**唯一**的那个 loader，
  *       它会按 parentURL 所在目录补出 `.js` / `/index.js`。别在另外再写一套。
  *
  *  坑 3：那个 loader 必须"被注册"才生效，光 `import` 一个导出 `resolve` 的模块
@@ -28,7 +28,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const LOADER = pathToFileURL(path.join(__dirname, '..', 'src-resolve-loader.mjs')).href;
+const LOADER = pathToFileURL(path.join(__dirname, '..', 'src-resolve.mjs')).href;
 
 let loaderReady = false;
 async function ensureLoader() {
