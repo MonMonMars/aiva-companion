@@ -239,9 +239,14 @@ jobs:
       # （.glb 尤其）只有真开一遍浏览器才知道。
       # 放在上面之后：那一步已经轮询到新包出现，CDN 传播延迟在那儿就消化掉了。
       #
-      # ⚠️ 先当**观察位**（continue-on-error），跟上面 smoke-runtime 当初一样的做法：
-      #    会随机变红的闸门比没有闸门更糟 —— 它教会所有人「红了就重跑一次」。
-      #    先跑几轮确认不飘，再摘掉 continue-on-error 收成真闸门。
+      # ⚠️ 它先当过三轮观察位（#49/#50/#51，同一 commit e4c6d48）才收成真闸门 ——
+      #    跟上面 smoke-runtime 当初进 test job 一个规矩：会随机变红的闸门比没有
+      #    闸门更糟，它教会所有人「红了就重跑一次」。三轮实测：
+      #      Chrome 端口  3.1s / 9.6s / 9.1s    上限 60s    ≈6x
+      #      走到 Home     6 轮 /  5 轮 /  5 轮   上限 20 轮  ≈3.5x
+      #      模型挂上      0.0s /  0.0s /  0.0s   上限 25s
+      #    ⚠️ 这个 job 上 Chrome 起得比 test job 慢（约 9s vs 1~6.7s），60s 上限还剩
+      #      6 倍余量够用，但**比 test job 薄** —— 别再往下调这个上限。
       #    （牙齿已验：给个线上不存在的路径，它 71 秒内 FAIL 退出码 1，
       #      React 挂载 / 走到 Home / 模型挂上 三条同时红，不是无脑放行。）
       #
@@ -251,5 +256,4 @@ jobs:
       #    里那个 `run "名字" node ...` 包装器 —— 后者会被 lint-ci-refs 的 B/C 项
       #    要求本地也有同名步骤，这条不适用。）
       - name: 线上冒烟（网址真的 boot 得起来）
-        continue-on-error: true
         run: node tools/smoke-runtime.mjs . --url ${{ steps.deployment.outputs.page_url }}
