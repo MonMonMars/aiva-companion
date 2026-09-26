@@ -64,7 +64,7 @@ jobs:
               #    起得慢、这一步随时可能随机变红（CI #41 就是这么红的：16 秒上限
               #    被空等满）。而它恰恰只在**绿**的那次才值得看 —— 红了的话
               #    下面 else 分支会把末 40 行整段打出来，不缺这一句。
-              #    只留 6 行，免得 22 步把日志撑爆。
+              #    只留 6 行，免得 23 步把日志撑爆。
               echo "----- $name 的输出（末 6 行）-----"
               tail -6 /tmp/step.log
               echo "| $name | ✅ |" >> $GITHUB_STEP_SUMMARY
@@ -143,6 +143,10 @@ jobs:
           # `bad` 就是 0，于是**静默全绿** —— 实测旧行为在空目录上退出 0、塞个
           # zz-demo 角色也退出 0。这里要求它们在这些场景下必须是红的。
           run "zero-scan-teeth" node tools/test-lint-zero-scan-teeth.mjs .
+          # 上面那步验「收集环节坏掉会响」，这步验那三条 lint **看见真违规会红**
+          # （沙盒里造一处真违规），每条都配「正确写法要绿」的对照组 ——
+          # 少了对照组，无脑报错的检查也能混过去。
+          run "lint-rules-teeth" node tools/test-lint-rules-teeth.mjs .
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
           exit $fails

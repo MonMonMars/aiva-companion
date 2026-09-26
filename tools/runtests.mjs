@@ -110,6 +110,14 @@ STEPS.push(['lipsync-teeth', ['tools/test-lipsync-teeth.mjs', '.']]);
 // 报「合计 18 个角色，有缺口的 0 个」也是退出 0 —— 静默的假绿，比没有这条检查更糟。
 // 常驻的理由和第 19/20/21 步一样：闸门被改松时「所有测试照旧全绿」是最容易出现的假象。
 STEPS.push(['zero-scan-teeth', ['tools/test-lint-zero-scan-teeth.mjs', '.']]);
+// 第 23 步验的是那三条 lint（lint-net-calls / lint-imports / lint-styles）
+// **规则本身**还拦不拦得住东西 —— 和第 22 步是一对：
+//   第 22 步验「收集环节坏掉会响」（扫不到东西时别静默绿），
+//   第 23 步验「看见真违规会红」（沙盒里造一处真违规，并要求它红）。
+// 每条都配一个**正确写法**的对照组要求它绿 —— 少了对照组，"它红了"说明不了
+// 任何事：一个无脑报错的检查也能通过只验红的那半边。
+// 自己的牙齿也验过（变异测试）：把三条规则分别改成不生效，这里立刻红。
+STEPS.push(['lint-rules-teeth', ['tools/test-lint-rules-teeth.mjs', '.']]);
 
 const TAIL = 40;
 let fails = 0;
