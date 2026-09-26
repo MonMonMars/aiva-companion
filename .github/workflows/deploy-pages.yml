@@ -153,6 +153,10 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    # ★ 把这一版主 bundle 的名字交给 deploy job：它是「新包上线了没」唯一的凭据。
+    #   见下面 deploy job 里那步「核查线上产物」的注释。
+    outputs:
+      bundle: ${{ steps.bundle.outputs.name }}
     steps:
       - uses: actions/checkout@v4
 
@@ -186,6 +190,16 @@ jobs:
           node tools/fixhtml.mjs
           node tools/buildadmin.mjs
           node tools/precompress.mjs
+
+      # ★ Expo 给主 bundle 起的名字带**内容哈希**（index-<hash>.js），内容一变哈希就变。
+      #   记下它，deploy job 才能回答「线上跑的是不是**这一版**」——
+      #   只靠在包里搜那几条固定标记串是验不出来的：那些串旧包里也全有。
+      - id: bundle
+        name: 记下这一版主 bundle 的名字
+        run: |
+          name=$(node -e 'const fs=require("fs");const h=fs.readFileSync("dist/index.html","utf8");const m=h.match(/src="([^"]*\.js[^"]*)"/);if(!m){console.error("dist/index.html 里找不到 js bundle");process.exit(1)}process.stdout.write(m[1].split("/").pop())')
+          echo "name=$name" >> $GITHUB_OUTPUT
+          echo "这一版主 bundle = $name"
 
       # _expo/ 这类下划线开头的目录会被 Jekyll 吃掉，加 .nojekyll 关掉它
       - name: 关掉 Jekyll
@@ -231,10 +245,18 @@ jobs:
       #   仓库一改名，baseUrl 会跟着变、page_url 也会变，而写死的那个不会变 ——
       #   于是这一步会一直去查旧站点，而且查得通（静默的假绿）。
       #   现在它和下面「线上冒烟」用**同一个来源**；脚本里那个默认值只留给手工跑。
+      #
+      # ⚠️ `--expect-bundle` 是后来补的，补的是这道闸**名不副实**的那半个：
+      #   它叫「新包是否真的上线」，可输入只有「网址 + 一串固定标记串」——
+      #   而那些标记串**旧包里也全有**（'默认舞台'、'settings-timeout' 这些都是
+      #   好几个版本之前就有的）。于是它对任何含这些串的包都给同一结论：
+      #   CDN 还在发三个提交之前的包，它照样打印「全部命中 ✓」——静默的假绿。
+      #   现在拿 build job 产出的那个**内容哈希**去对：名字不一样就是还没刷到新包，
+      #   上面的重试循环才有意义。
       - name: 核查线上产物（新包是否真的上线）
         run: |
           for i in $(seq 1 12); do
-            node tools/verify-live.mjs --url ${{ steps.deployment.outputs.page_url }} && exit 0
+            node tools/verify-live.mjs --url ${{ steps.deployment.outputs.page_url }} --expect-bundle ${{ needs.build.outputs.bundle }} && exit 0
             echo "--- 第 $i 次未通过（新包可能还没刷到），等 45 秒再试"
             sleep 45
           done

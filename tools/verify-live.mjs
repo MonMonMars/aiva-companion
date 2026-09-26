@@ -17,6 +17,21 @@
 // ⚠️ minifier 会把中文转成 \uXXXX 转义，直接搜中文会全 ✗ —— 必须先转义再搜。
 const DEFAULT_SITE = 'https://monmonmars.github.io/aiva-companion/';
 const argUrl = (() => { const i = process.argv.indexOf('--url'); return i >= 0 ? process.argv[i + 1] : null; })();
+// `--expect-bundle <文件名>`：本次构建产出的主 bundle 名字（带内容哈希）。
+// 不传的话这一步只能验「线上有这些字符串」，**验不了「线上是这一版」** ——
+// 那些标记串旧包里也全有，于是 CDN 发着旧包它照样报「全部命中」。
+const argBundle = (() => {
+  const i = process.argv.indexOf('--expect-bundle');
+  if (i < 0) return null;
+  const v = process.argv[i + 1];
+  // ★ 传了 flag 却没拿到值（CI 里多半是 build job 的 outputs 没接上、展开成空串）
+  //   **必须报错**，不能退回下面那个「验不了版本」的分支 —— 那正是这次要堵的洞。
+  if (!v) {
+    console.log('✗ --expect-bundle 后面没有值 —— 多半是 build job 的 outputs 没传过来，这条检查不能就这么放过。');
+    process.exit(1);
+  }
+  return v;
+})();
 // 补尾斜杠：`new URL(相对路径, SITE)` 的结果取决于 SITE 是目录还是文件
 const SITE = (argUrl || DEFAULT_SITE).replace(/\/?$/, '/');
 
@@ -82,7 +97,25 @@ const jsRes = await fetch(jsUrl, { headers: { 'User-Agent': 'node' } });
 const js = await jsRes.text();
 console.log('bundle', jsUrl.split('/').pop(), jsRes.status, js.length + ' bytes');
 
+// ★ 一条标记都没有时**不许报通过** —— 那不是"全部命中"，是"这回什么都没比对"
+//   （第 71 / 75 条那一族：扫描式检查是"扫到什么对什么"）。
+if (MARKS.length + ASCII_MARKS.length === 0) {
+  console.log('✗ MARK 清单是空的 —— 这条检查等于没验，别当成通过。');
+  process.exit(1);
+}
+
 let bad = 0;
+
+// ★ 这一版 vs 线上那一版：名字（内容哈希）对不上就是还没刷到，重试循环才有意义
+const gotBundle = jsUrl.split('/').pop();
+if (argBundle) {
+  const same = gotBundle === argBundle;
+  if (!same) bad++;
+  console.log(`${same ? 'OK  ' : 'MISS'}  这一版的主 bundle  ${gotBundle}${same ? '' : `  ← 线上还是旧的，等的是 ${argBundle}`}`);
+} else {
+  console.log(`⚠️ 没传 --expect-bundle：只能验「线上有这些字符串」，**验不了「线上是这一版」**（${gotBundle}）—— 手工跑可以，CI 里必须传。`);
+}
+
 for (const [plain, label] of MARKS) {
   const hit = js.includes(esc(plain));
   if (!hit) bad++;
