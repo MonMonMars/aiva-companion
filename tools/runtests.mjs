@@ -56,14 +56,19 @@ const DECL = REG.decl;
 REG.push('check-persona-coverage', ['tools/check-persona-coverage.mjs'], {
   guardedBy: ['zero-scan-teeth', 'lint-rules-teeth', 'persona-coverage-teeth'],
 });
+// 下面三条原先只写 `why`（「断言写坏会红，未验证」）。2026-09-26 用变异证掉了：
+//   withTimeout  上限乘 3 → **原本全绿**（耗时窗口 [140,900) 有 6 倍宽）❌ 洞，已补
+//                不看墙钟的新断言：直接盯排进计时器的毫秒数
+//   auth-timeout kind 写错 / 不 abort → 红 ✅
+//   net-timeout  退化成只发 signal / 按秒取整 → 红 ✅
 REG.push('withTimeout', ['tools/test-with-timeout.mjs'], {
-  why: '它断言的是真的超时行为（自己起一个慢请求再测时长），断言写坏会红；但它自己没有常驻牙齿，属未验证',
+  guardedBy: ['assertion-teeth'],
 });
 REG.push('auth-timeout', ['--import', './tools/src-resolve.mjs', 'tools/test-auth-timeout.mjs'], {
-  why: '与 withTimeout 同族：断言真的超时路径，不是扫一眼有没有输出；未验证',
+  guardedBy: ['assertion-teeth'],
 });
 REG.push('net-timeout', ['--import', './tools/src-resolve.mjs', 'tools/test-net-timeout.mjs'], {
-  why: '与 withTimeout 同族：断言真的超时路径；未验证',
+  guardedBy: ['assertion-teeth'],
 });
 REG.push('nativeSpeech', ['tools/nativeSpeech.test.mjs'], {
   guardedBy: ['assertion-teeth'],
@@ -81,8 +86,12 @@ REG.push('pipeline', ['tools/pipeline.test.mjs'], {
   // 只覆盖它里面的**口型**那两条断言 —— 其余部分仍是没有牙齿的
   guardedBy: ['lipsync-teeth'],
 });
+// 原先只写 `why`。2026-09-26 用变异证掉了，而且**两条都挖出过洞**：
+//   拿掉 out 对 fwd 的正交化 → 原本**全绿**（两棵骨架的 z 全是 0，正交化是空操作）
+//   允许连着播同一个姿势   → 原本**全绿**（那条断言在 18 个姿势里随机抽，靠碰运气）
+// 洞已补（另搭一棵手臂往身前伸的骨架 + 把那一段的 Math.random 钉成常数）。
 REG.push('rig-semantics', ['--import', './tools/src-resolve.mjs', 'tools/test-rig-semantics.mjs'], {
-  why: '断言骨骼语义的真实行为；未验证',
+  guardedBy: ['assertion-teeth'],
 });
 REG.push('inspect-character', ['tools/inspect-character.mjs'], {
   teeth: 'tools/test-inspect-character-teeth.mjs',
@@ -111,8 +120,13 @@ REG.push('lint-net-calls', ['tools/lint-net-calls.mjs'], {
 // 第 16 步现在打**两个平台**（web + ios）：CI 只导 web，而同一入口在原生是
 // 830 个模块、web 只有 546 —— 差的那批只有打原生才会走到，缺了成员实现
 // （如 Avatar3D.native.js）时 web 照样全绿。
+// 原先那条 `why` 里写着「从没造过『导出其实坏了它却放行』的场景」。
+// 2026-09-26 造出来了：往 src/lib/netFetch.js 里插一行
+// `import './__mutation_missing.js';`（正是脚本顶部记的那次 CI #25 的形状），
+// web 5.2 秒 / ios 3.0 秒双双失败、退出码 1 且报错点名 —— 它确实有牙齿。
+// 第 29 步把这一条变成常驻（只验 web 那一半，ios 要 21 秒，不值得每次都付）。
 if (!FAST) REG.push('bundle(web+ios)', ['tools/verify-bundle.mjs', '.', '--keep'], {
-  why: '它验的是真的导出过程（真跑一次 expo export），导出坏了会红；但**它自己没有常驻牙齿** —— 从没造过「导出其实坏了它却放行」的场景；未验证',
+  guardedBy: ['assertion-teeth'],
 });
 // 第 17 步接管第 16 步之上的那一层：「能打包」不等于「能跑起来」。
 // 白屏、boot 抛异常、ErrorBoundary 把错吞掉 —— 这些打包全都发现不了，

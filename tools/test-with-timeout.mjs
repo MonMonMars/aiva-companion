@@ -50,6 +50,18 @@ const { withTimeout } = await loadSrc('src/lib/withTimeout.js');
 let pass = 0;
 let fail = 0;
 function ok(label, cond, detail = '') {
+  // ★★ 这个文件的 ok() 是 `ok(label, cond, detail)` —— 跟别处 **cond 在前** 的
+  //    写法相反。2026-09-26 就在这里栽过：按别处的习惯写成 `ok(cond, label)`，
+  //    条件位拿到的是那句标签（非空字符串 = 永真），布尔值被当成标签打出去 ——
+  //    输出里出现一行「✓ false」，一条**永远绿**的断言。
+  //    所以这里显式卡死参数类型：传反了当场炸，不许悄悄变成一条空转的断言。
+  if (typeof label !== 'string' || !label) {
+    throw new Error(`ok() 的第一个参数必须是非空字符串（这个文件的签名是 ok(label, cond, detail)，`
+      + `跟别处相反）。实际收到：${JSON.stringify(label)} —— 八成是把参数顺序写反了`);
+  }
+  if (typeof cond !== 'boolean') {
+    throw new Error(`ok() 的第二个参数必须是布尔值。实际收到：${JSON.stringify(cond)} —— 参数顺序写反了？`);
+  }
   if (cond) { pass++; console.log('  ✓', label); }
   else { fail++; console.log('  ✗', label, detail ? '→ ' + detail : ''); }
 }
@@ -157,6 +169,36 @@ console.log('─'.repeat(60));
   ok('onTimeout 抛错不影响超时结果', msg === 'settings-timeout', String(msg));
   await sleep(400);
   ok('onTimeout 抛错也不会变成 unhandled', unhandled.length === 0, JSON.stringify(unhandled));
+}
+
+// 9) ★ 上限必须**原样**用掉 —— 这条不看墙钟，所以不会飘
+{
+  // 起因（2026-09-26 实测）：上面第 2 条写的窗口是 [140, 900)，对 150ms 来说
+  // 是 6 倍宽。把实现里 `}, ms);` 改成 `}, ms * 3);`（450ms）之后，
+  // **整套 16 项照旧全绿** —— 「超时确实发生了」被验到了，
+  // 可「是不是在说好的那一刻发生」没人管。而调等待上限恰恰是弱网调优最爱动的
+  // 地方，6 倍范围里可以自由漂移。
+  //
+  // 为什么不直接把 [140,900) 收紧：那样只能按倍数往下压，压到 2 倍就会开始
+  // 跟机器快慢赛跑，而一条**会随机变红**的断言比没有断言更糟。
+  // 所以这条改成盯**排进计时器的那个毫秒数** —— 乘倍数、加常数都躲不掉，
+  // 而且跟机器快慢无关，永远不会飘。
+  const seen = [];
+  const realSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = (fn, ms, ...rest) => { seen.push(ms); return realSetTimeout(fn, ms, ...rest); };
+  try {
+    await withTimeout(new Promise(() => {}), 150, 'settings-timeout').catch(() => {});
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+  }
+  // ⚠️ 这个文件的 ok() 是 `ok(label, cond, detail)` —— 跟别处 **cond 在前** 的
+  //    写法相反。第一版按别处的习惯写成了 `ok(cond, label, detail)`，于是
+  //    打印出来的是一行「✓ false」：条件位拿到的是那句标签（非空字符串 = 永真），
+  //    布尔值被当成标签打出去了 —— 一条**永远绿**的断言，而且它连自己是假的
+  //    都写在脸上。看输出时认准「✓ false」这种。
+  ok(`排进计时器的就是传进去的那 150ms（实际 ${seen.join(' / ')}）`,
+    seen.length === 1 && seen[0] === 150,
+    '上限被改写过（乘倍数 / 加常数 / 换了单位）会让这条红 —— 上面第 2 条在 6 倍窗口里抓不到');
 }
 
 // ── 自检：当初那个错误写法，必须被上面第 3 条抓出来 ──────────────────────

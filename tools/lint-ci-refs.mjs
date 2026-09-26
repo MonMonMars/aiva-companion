@@ -1,7 +1,9 @@
-// 盯 CI 配置文件本身的健康度 —— 具体两件事：
+// 盯 CI 配置文件本身的健康度 —— 具体四件事：
 //
 //   A. workflow 里引用的每个仓库文件，磁盘上必须真的存在
 //   B. CI test job 跑的每一步，本地套装 tools/runtests.mjs 里必须也有
+//   C. 同名步骤的命令行必须一致（不只是名字对上）
+//   D. CI 上必须真的跑一次「登记核对」（第 28 步那道闸），详见文末【D】
 //
 // 存在的理由是一次真事故（CI #29）：把两套 loader 合并之后，
 // 本地 17 步全绿、 build / deploy 也绿，只有 test job 失败 ——
@@ -171,6 +173,36 @@ if (!fs.existsSync(RUNTESTS)) {
   if (localOnly.length) {
     console.log(`  ℹ️ 只在本机跑的步骤（正常，但要有理由）：${localOnly.join(' / ')}`);
   }
+}
+
+// ---------- D. CI 上必须真的执行「登记核对」 ----------
+// 2026-09-26 查出来的缺口：CI 是自己在 bash 里逐步跑的（`run "名字" node ...`），
+// **从来没调用过 tools/runtests.mjs** —— 于是它开头那句「漏登记就整套拒绝开跑」
+// 在 CI 上一遍都没执行过。上面补了一行 `node tools/runtests.mjs . --check-registry`，
+// 而这一项盯的就是**那一行还在不在**：不然它跟别的「下次记得」一样，会被无声删掉。
+//
+// ⚠️ 诚实说明这一项能盯到什么程度：它只认「命令行里出现了这段」。
+//    如果有人把它包进 `echo "node tools/runtests.mjs . --check-registry"`，
+//    这一项照样绿 —— 它防的是**整行被删/被改坏**，不防「写了却不执行」。
+//    再往上就该是牙齿的牙齿了，到此为止。
+console.log('\n【D】CI 上必须真的跑一次登记核对（第 28 步那道闸）');
+
+const REG_RE = /tools\/runtests\.mjs[^\n]*--check-registry/;
+let regHits = 0;
+for (const yml of fs.readdirSync(WF_DIR).filter((f) => /\.ya?ml$/.test(f))) {
+  const text = fs.readFileSync(path.join(WF_DIR, yml), 'utf8');
+  for (const line of text.split('\n')) {
+    if (/^\s*#/.test(line)) continue; // 同 A/B/C：注释里的说明不算执行
+    if (REG_RE.test(line)) {
+      regHits++;
+      console.log(`  ✓ ${yml} 里有一行在跑登记核对：${line.trim()}`);
+    }
+  }
+}
+if (regHits === 0) {
+  // ★ fail-closed：扫不到就当不合格。这条若写成「扫到才算」反倒会在正则坏掉时静默全绿。
+  fail('CI 上没有任何一行在跑 `tools/runtests.mjs --check-registry` —— '
+    + '「漏登记就拒绝开跑」那道闸在 CI 上是哑的，没写牙齿的步骤照样能加进来');
 }
 
 console.log('');

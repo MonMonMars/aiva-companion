@@ -23,6 +23,7 @@ import * as THREE from 'three';
 import { createRigDriver } from '../src/three/rigDriver.js';
 import { createPoseScheduler } from '../src/anim/poseScheduler.js';
 import { IDLE_POSES } from '../src/anim/idlePoses.js';
+import { buildSemAxes } from '../src/anim/semAxes.js';
 
 // 角色站直、面朝 +Z：她的左手边是 +X（VRM 规范）
 const DEFS = [
@@ -298,6 +299,50 @@ for (const alongAxis of ['x', 'y']) {
 }
 
 // ---------------------------------------------------------------------------
+// ★ 语义轴本身：out 必须正交于 fwd
+// ---------------------------------------------------------------------------
+// ⚠️ 上面两组合成骨架**够不到**这个状态 —— 这是 2026-09-26 变异实测出来的：
+//    把 src/anim/semAxes.js 里那行 `out.addScaledVector(fwd, -out.dot(fwd));`
+//    整行删掉，上面 69 项**照旧全绿**。
+//
+//    原因可以算出来：out 和 fwd 都垂直于骨段 d，于是
+//        out_raw · fwd = away_z − (away·d)(F·d)
+//    而 DEFS 里每根骨的 z 都是 0 —— away_z = 0、d_z = 0，右边恒等于 0。
+//    也就是说那两棵树上手臂从来不往身前伸，正交化是**空操作**，
+//    这条轴怎么算都正交。
+//
+//    可 src/anim/semAxes.js 顶部记的那次事故（Quaternius T-pose 骨架上
+//    前臂残差 102°）正是这一条失效造成的：out 与 fwd 共线时三个角只剩两个
+//    自由度，合成不回原来的旋转。所以这里另搭一棵**手臂往身前伸**的骨架
+//    （带 z 分量），让 away 和 F 在「垂直于骨段的平面」里不再正交。
+console.log('\n=== 语义轴：out 必须 ⟂ fwd（三个角才有三个自由度）===');
+{
+  const root = new THREE.Object3D();
+  const mk = (name, parent, pos) => {
+    const b = new THREE.Bone();
+    b.name = name;
+    b.position.set(pos[0], pos[1], pos[2]);
+    parent.add(b);
+    return b;
+  };
+  const hips = mk('Hips', root, [0, 1.00, 0]);
+  const la = mk('LeftArm', hips, [0.18, -0.10, 0.06]);
+  mk('LeftHand', la, [0.20, -0.26, 0.30]);   // 前臂往身前伸 → 骨段带 z
+  const ra = mk('RightArm', hips, [-0.18, -0.10, 0.06]);
+  mk('RightHand', ra, [-0.20, -0.26, 0.30]);
+  root.updateWorldMatrix(true, true);
+
+  const ax = buildSemAxes({ Hips: hips, LeftArm: la, RightArm: ra });
+  for (const n of ['LeftArm', 'RightArm']) {
+    const d = ax[n].out.dot(ax[n].fwd);
+    check(Math.abs(d) < 1e-6,
+      `${n} 的 out ⟂ fwd（点积 ${d.toExponential(1)}）`,
+      `点积 ${d.toFixed(6)} —— 不正交时 out/fwd/twist 三个角只剩两个自由度，`
+      + '合成不回原来的旋转（semAxes.js 顶部那次 102° 残差就是这么来的）');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 姿势调度器：状态池、抢占、播完回归
 // ---------------------------------------------------------------------------
 console.log('\n=== 姿势调度器 ===');
@@ -327,9 +372,25 @@ console.log('\n=== 姿势调度器 ===');
   check(bad.length === 0, `所有姿势引用的骨都被识别（${known.size} 根可用）`, `未识别 ${bad.join(', ')}`);
 
   // 跑 30 秒，idle 池里应该换过好几个姿势，而且不连着重复
-  sched.update(0, 0.016);
+  //
+  // ⚠️ 这里把 Math.random 钉成一个常数 —— 2026-09-26 变异实测出来的：
+  //    把 poseScheduler 里 `all.filter((p) => p.id !== lastId)` 改成 `all`
+  //    （去掉去重），这一段**照样全绿**。18 个姿势随机抽、只换七八次，
+  //    连着抽中同一个的概率本来就不高 —— 那条 `dup === 0` 的断言其实是在
+  //    **碰运气**：它绿了不代表去重还在，它真红了也会被当成随机波动。
+  //
+  //    钉成常数之后「抽中谁」变成可预测的：有去重时在两个中间位之间来回摆，
+  //    去重一拿掉就永远停在同一根 —— 概率问题由此变成确定性问题。
+  //    （不这么做的话，只能靠"多跑几次"来碰，那不算防线。）
+  const realRandom = Math.random;
+  Math.random = () => 0.5;
+  try {
+    sched.update(0, 0.016);
+    for (let i = 0; i < 1900; i++) sched.update(i * 0.016, 0.016);
+  } finally {
+    Math.random = realRandom;
+  }
   let dup = 0;
-  for (let i = 0; i < 1900; i++) sched.update(i * 0.016, 0.016);
   for (let i = 1; i < seen.length; i++) if (seen[i] === seen[i - 1]) dup++;
   check(seen.length >= 4, `30 秒内换了 ${seen.length} 次姿势`, `${seen.length}`);
   check(dup === 0, `没有连着播同一个姿势`, `重复 ${dup} 次`);

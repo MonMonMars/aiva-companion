@@ -137,6 +137,15 @@ const scenarios = [
     mutate: () => fs.appendFileSync(WF, '\n# 用法：run "注释里的名字" node tools/nope.mjs\n'),
   },
   {
+    // 2026-09-26 查出来的缺口：CI 在 bash 里自己逐步跑，从没调用过 runtests.mjs，
+    // 于是「漏登记就拒绝开跑」那道闸在 CI 上一直是哑的。补的那一行必须有人在盯，
+    // 否则它跟别的「下次记得」没两样 —— 这一条盯的就是「把那行删掉会不会响」。
+    id: 'D3 ★ CI 上跑登记核对的那一行被删掉时必须响（否则那道闸是哑的）',
+    expect: 1,
+    expectText: '没有任何一行在跑',
+    mutate: () => replaceOnce(WF, /^\s*node tools\/runtests\.mjs \. --check-registry\s*$/m, ''),
+  },
+  {
     // B/C 是「扫到什么就对什么」，扫到 0 条时会**静默全绿**：
     // 实测旧版在这种仓库上 exit=0，一整层检查等于没跑。必须当场响。
     id: 'D2 ★ 一条都扫不到时必须响（否则 B/C 静默全绿）',
