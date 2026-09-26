@@ -110,7 +110,16 @@ function gitStatus(root) {
 // ---- 开跑 ----------------------------------------------------------------
 console.log('【第 34 步】每个自称牙齿的脚本，是不是真的验到了东西');
 
-const rows = await askRegistry(ROOT);
+// 拿不到清单就必须是**一条红的 ✗**，不能是崩掉的异常 ——
+//   异常只会让这一步「失败」，看不出是哪一条判据没达标（第 35 步要逐条对得上）。
+let rows = null;
+try {
+  rows = await askRegistry(ROOT);
+} catch (e) {
+  check(false, `问得到登记表（${e.message.split('\n')[0]}）`);
+  console.log(bad ? `\n[teeth-scripts] FAIL — ${bad} 项没达标` : '');
+  process.exit(1);
+}
 const teeth = teethScripts(rows);
 
 check(teeth.length > 0, `从登记表问到了 ${teeth.length} 个牙齿脚本（一条都没有就是解析失败，按失败算）`);

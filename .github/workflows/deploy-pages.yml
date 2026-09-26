@@ -225,6 +225,19 @@ jobs:
           # 的抹除、删掉「扫不到就红」的金丝雀，它就退化成永远绿）。本步在沙盒副本
           # 上做 8 个变异 + 2 组对照组，期望值不硬编码，先问真实登记再据此拼判据。
           run "readme-steps-teeth" node tools/test-readme-steps-teeth.mjs .
+          # 第 34 步：挨个**真跑**一遍所有自称牙齿的脚本，确认它们真的验到了东西。
+          #   起因是欠账单上那 13 个「未验证」—— 唯一凭据是「当初做过变异测试」，
+          #   而当时的证据会过期（脚本后来被改过 / 依赖的产物没了 / 加了跳过分支）。
+          #   只看三条外在事实：退出码 0、输出里有场景结论、跑完工作区没变化。
+          #   第一次跑就抓到一个空转的：smoke-runtime-teeth 缺产物时打印「跳过」
+          #   然后 exit 0，全套照绿而它一次实验都没做（已修）。
+          #   ⚠️ 它把 13 个牙齿脚本又跑了一遍，约 3 分钟 —— 这是有意的，
+          #      「读代码判断它有没有牙齿」判不了。
+          run "teeth-scripts" node tools/verify-teeth-scripts.mjs .
+          # 第 35 步是第 34 步的牙齿：沙盒里把登记表裁到只剩夹具，10 个场景
+          # （6 个变异 + 2 个反向对照 + 2 个正向对照）逐条确认那六条判据都还活着，
+          # 其中一条故意演示「拿掉判据②之后空转脚本会被判绿」—— 证明它是承重的。
+          run "teeth-scripts-teeth" node tools/test-verify-teeth-scripts-teeth.mjs .
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
           exit $fails
