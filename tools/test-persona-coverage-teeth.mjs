@@ -17,6 +17,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { rmTreeBounded } from './step-runner.mjs';
 
 const ROOT = path.resolve(process.argv[2] || path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
 const SB = path.join(ROOT, '_personasb');
@@ -133,6 +134,10 @@ console.log('\n⑤ 删掉 realistic-noa 整块（自检失败必须影响退出�
   check(/✗ 脚本有问题/.test(r.out), '要打印「✗ 脚本有问题，别信上面的结果」');
 }
 
-fs.rmSync(SB, { recursive: true, force: true });
+// 清理不许卡住：fs.rmSync(recursive) 在这台机器上会**卡住不返回** ——
+//   八道题全过了却因为清理挂住而整条变红，那是假失败，比挂住更难查。
+//   所以丢给子进程做并给它硬上限；真删不掉就如实说，不挡结论。
+const rm = await rmTreeBounded(SB);
+if (!rm.gone) console.log(`  ⚠️ 沙盒没删干净（${rm.timedOut ? '删除卡住了，进程已杀' : '未知原因'}）—— 留着，不挡结论`);
 console.log(fails ? `\n[persona-teeth] FAIL — ${fails} 项没达到预期` : '\n[persona-teeth] PASS — 角色核对看见缺口会红、没缺口会绿');
 process.exit(fails ? 1 : 0);

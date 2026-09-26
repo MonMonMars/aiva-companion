@@ -35,6 +35,12 @@ const { applyMorphData } = await importPath(path.join(ROOT, 'src/anim/morphData.
 
 const MODELS = path.join(ROOT, 'assets', 'models2');
 const names = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+// ★ assets/models2 不在 → 别让 readdirSync 甩一段 ENOENT 堆栈了事。
+//   「脚本炸了」和「管线不通」不是一回事，后者才是这条检查要说的话。
+if (!fs.existsSync(MODELS)) {
+  console.log(`✗ 找不到 ${MODELS} —— 一个模型都验不到，别把这一轮当成通过。`);
+  process.exit(1);
+}
 const list = names.length
   ? names.map((n) => (n.startsWith('realistic-') ? n : `realistic-${n}`))
   : fs.readdirSync(MODELS).filter((f) => f.endsWith('.glb')).map((f) => f.replace(/\.glb$/, ''));
@@ -234,6 +240,17 @@ for (const r of rows) {
   }
 }
 console.log('');
+// ★ rows 为空也要红 —— 这是 tools/inspect-character.mjs 上一任版本留下的同款洞：
+//   它算完 totalFails 就打印一句结论，于是「一个 GLB 都没验到」和「15 个全通过」
+//   输出同样体面。0 条闸门（SKILL 第 75 条）：扫到 0 条时报通过的检查，
+//   比没有这条检查更糟 —— 它会让人以为模型是被验过的。
+if (rows.length === 0) {
+  console.log(`✗ 一个模型都没验到（目录：${MODELS}）—— 这条检查等于没跑，`);
+  // 文案里刻意不写「全部通过」四个字：它自己的牙齿脚本会在 stdout 里找那句结论，
+  // 这段提醒带着它就会被误判（lint-ci-refs 早踩过：注释里的名字被当成真步骤）。
+  console.log('    一件东西都没判过，就谈不上通过。别把它当成模型的结论。');
+  process.exit(1);
+}
 console.log(totalFails === 0 ? '  全部通过。' : `  ${totalFails} 项未通过。`);
 console.log('');
 process.exitCode = totalFails ? 1 : 0;

@@ -164,15 +164,28 @@ function morphStats(file) {
 
 /* ------------------------------------------------------------------ */
 const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
-const list = args.length
-  ? args.map((n) => (n.startsWith('realistic-') ? n : `realistic-${n}`))
-  : fs.readdirSync(MODELS).filter((f) => f.endsWith('.glb')).map((f) => f.replace(/\.glb$/, ''));
+const want = args.length ? args.map((n) => (n.startsWith('realistic-') ? n : `realistic-${n}`)) : null;
+
+// ★ MODELS 目录不在 → 别说猜。以前是 scandir 直接甩一段 ENOENT 堆栈（退出码倒是 1，
+//   但那不是"体检没通过"，是"脚本炸了"，两者不该混为一谈）。
+if (!fs.existsSync(MODELS)) {
+  console.log(`✗ 找不到 ${MODELS} —— 一个模型都体检不到，别把这一轮当成通过。`);
+  process.exit(1);
+}
+
+const list = want || fs.readdirSync(MODELS).filter((f) => f.endsWith('.glb')).map((f) => f.replace(/\.glb$/, ''));
 
 const rows = [];
+// fails 要提前到这儿：上面「指定了名字却找不到 GLB」那条分支也要往里加数。
+let fails = 0;
 for (const name of list) {
   const glbPath = path.join(MODELS, `${name}.glb`);
   if (!fs.existsSync(glbPath)) {
+    // ★ 名字是**你显式指定的**还找不到 —— 那就是没验到，必须算失败。
+    //   以前这里只 `console.log('✗ …没有 GLB')` 然后 continue，`fails` 纹丝不动，
+    //   于是下一句照样是「全部通过。」退出 0 —— 一边打 ✗ 一边说全通过。
     console.log(`✗ ${name}: 没有 GLB`);
+    if (want) fails++;
     continue;
   }
   const { g, bin, bytes } = readGlb(glbPath);
@@ -333,7 +346,7 @@ const HEAD_BANDS = {
 };
 const bandOf = (name) => HEAD_BANDS[name] || { lo: 6.8, hi: 8.6, why: '写实成人档' };
 
-let fails = 0;
+// （fails 已提前到 rows 旁边声明 —— 那里就要开始计数）
 for (const r of rows) {
   const problems = [];
   const check = (cond, msg) => { if (!cond) problems.push(msg); };
@@ -373,9 +386,27 @@ for (const r of rows) {
     for (const p of problems) console.log(`      ${p}`);
   }
 }
-console.log('');
+// ★★末尾这三道闸以前一道都没有** —— 整个脚本算完 `fails` 就打印一句，
+//   退出码照旧是 0。于是体检出 N 项不合格照样是「PASS inspect-character」，
+//   空模型目录照样打印「全部通过。」。第 69 条「打印了 ≠ 拦住了」的原样重现：
+//   警告写得再直白，退出码是 0 就什么也拦不住。三道一起补：
+//     ① rows 为空（一个都没体检到）→ 红。"0 条闸门"（SKILL 第 75 条）；
+//     ② MODELS 目录不在 → 红（上面第一段已处理，不再退到 scandir 甩堆栈）；
+//     ③ fails > 0 → 红。
+//   三者都由 tools/test-inspect-character-teeth.mjs 盯着。
+if (rows.length === 0) {
+  console.log(`✗ 一个模型都没体检到（目录：${MODELS}）—— 这条体检等于没跑，`);
+  // 文案里刻意不出现「全部通过」四个字的那种写法：牙齿脚本会去 stdout 里找
+  // 那句结论，这段提醒自己带着它就会被误判 —— lint-ci-refs 踩过同一个坑
+  // （注释里的名字被当成真步骤扫进来）。
+  console.log('    一件东西都没判过，就谈不上通过。别把它当成模型的结论。');
+  process.exit(1);
+}
+// 结论行必须在 0 项检查**之后**再打。原来的顺序是先打结论再查 rows，于是
+// 空跑时同一次输出里既有「全部通过。」又有「✗ 一个模型都没体检到」，自相矛盾。
 console.log(fails === 0 ? '  全部通过。' : `  ${fails} 项未通过。`);
 console.log('');
+process.exit(fails === 0 ? 0 : 1);
 
 /* ---------------------- 可选：轮廓条形图 ---------------------- */
 if (process.argv.includes('--profile')) {

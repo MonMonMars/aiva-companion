@@ -21,6 +21,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { rmTreeBounded } from './step-runner.mjs';
 
 const ROOT = path.resolve(process.argv[2] || '.');
 const NODE = process.execPath;
@@ -167,7 +168,11 @@ try {
     }
   }
 } finally {
-  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  // 清理不许卡住：fs.rmSync(recursive) 在这台机器上会**卡住不返回** ——
+  //   八道题全过了却因为清理挂住而整条变红，那是假失败，比挂住更难查。
+  //   所以丢给子进程做并给它硬上限；真删不掉就如实说，不挡结论。
+  const rm = await rmTreeBounded(SANDBOX);
+  if (!rm.gone) console.log(`  ⚠️ 沙盒没删干净（${rm.timedOut ? '删除卡住了，进程已杀' : '未知原因'}）—— 留着，不挡结论`);
 }
 
 console.log(bad ? `\n❌ ${bad} 个场景不合预期` : `\n✅ ${scenarios.length} 个场景全部合预期`);

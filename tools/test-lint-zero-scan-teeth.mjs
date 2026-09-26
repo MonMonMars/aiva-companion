@@ -18,6 +18,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { rmTreeBounded } from './step-runner.mjs';
 
 const ROOT = path.resolve(process.argv[2] || path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
 const SB = path.join(ROOT, '_teethsb');           // 沙盒：造坏掉的仓库副本
@@ -121,6 +122,10 @@ for (const [script, args] of [
   check(r.code === 0, `${path.basename(script)} 退出码 ${r.code}（要 0）`);
 }
 
-fs.rmSync(SB, { recursive: true, force: true });
+// 清理不许卡住：fs.rmSync(recursive) 在这台机器上会**卡住不返回** ——
+//   八道题全过了却因为清理挂住而整条变红，那是假失败，比挂住更难查。
+//   所以丢给子进程做并给它硬上限；真删不掉就如实说，不挡结论。
+const rm = await rmTreeBounded(SB);
+if (!rm.gone) console.log(`  ⚠️ 沙盒没删干净（${rm.timedOut ? '删除卡住了，进程已杀' : '未知原因'}）—— 留着，不挡结论`);
 console.log(fails ? `\n[zero-scan-teeth] FAIL — ${fails} 项没达到预期` : '\n[zero-scan-teeth] PASS — 扫描式检查在收集环节坏掉时会响');
 process.exit(fails ? 1 : 0);

@@ -64,7 +64,7 @@ jobs:
               #    起得慢、这一步随时可能随机变红（CI #41 就是这么红的：16 秒上限
               #    被空等满）。而它恰恰只在**绿**的那次才值得看 —— 红了的话
               #    下面 else 分支会把末 40 行整段打出来，不缺这一句。
-              #    只留 6 行，免得 24 步把日志撑爆。
+              #    只留 6 行，免得 27 步把日志撑爆。
               echo "----- $name 的输出（末 6 行）-----"
               tail -6 /tmp/step.log
               echo "| $name | ✅ |" >> $GITHUB_STEP_SUMMARY
@@ -151,6 +151,24 @@ jobs:
           # 签名姿势重复 / 自检 —— 沙盒里缺一样，报表就得有一个 ✗ 且退出非 0，
           # 原样则必须绿。这批规则改松之后没人会发现，就是因为以前没有这一步。
           run "persona-coverage-teeth" node tools/test-persona-coverage-teeth.mjs .
+          # 轮到两个「遍历 assets/models2 → 打分 → 打印结论」的报表脚本。它们是
+          # 最容易静默假绿的一族：目录空了、名字不对，就变成 0 个体检项然后照样
+          # 打印「全部通过。」。之所以能确定这件事真的发生过，是因为 inspect-character
+          # 那边实测三个场景都是假的绿（它算完 fails 却没有 process.exit）。
+          # 这里的判据也有讲究：结论行只认 `/^ {2}全部通过。$/m`——放宽成 `/全部通过/`
+          # 会连「正在解释为什么不算通过」的报错文案一起命中，反而假红。
+          run "inspect-character-teeth" node tools/test-inspect-character-teeth.mjs .
+          # 同一族的第二个。它原本就有退出码（缺 GLB 会计数），缺的是「一个都没验到」
+          # 那道 0 条闸门 —— 拿 HEAD 上的旧版跑过反向验证：目录空时旧版退出 0 并打印
+          # 「全部通过。」，目录不在时虽然是退出 1，但甩的是 scandir 的 ENOENT 堆栈，
+          # 一句人话都没有。这两条就是这条牙齿会红的凭据。
+          # 注意它慢：要在 Node 里用真 GLTFLoader 解析 GLB，脚本内部每题都挂了限时。
+          run "realistic-pipeline-teeth" node tools/test-realistic-pipeline-teeth.mjs .
+          # 第 27 步盯的不是某个脚本，而是**这套东西自己**：每一步的硬上限。
+          # 2026-09-26 那次全套挂在第 19 步 4 小时 17 分，日志停在上一步之后没有下文 ——
+          # 「挂住」既不是成功也不是失败，是永远没有结论。现在每一步都有上限，
+          # 超时按失败算，并且连子进程树一起杀（留着孙进程会继续占着文件句柄）。
+          run "step-timeout-teeth" node tools/test-step-timeout-teeth.mjs .
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
           exit $fails

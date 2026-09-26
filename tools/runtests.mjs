@@ -17,10 +17,10 @@
 //   3) 失败时把输出的末 40 行打出来 —— 和 CI Summary 的策略一样，
 //      省得为了看一行报错再去翻日志。
 
-import { spawnSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'node:url';
+import { runStep, DEFAULT_TIMEOUT_MS } from './step-runner.mjs';
 
 // ★ 默认根目录由**脚本自己的位置**推出，别用 '.' —— '.' 解析的是 CWD，
 //   而后台任务里 `cd` 不可用（shim 直接 127），CWD 是工作区根，
@@ -128,6 +128,27 @@ STEPS.push(['lint-rules-teeth', ['tools/test-lint-rules-teeth.mjs', '.']]);
 // 同样每个场景配对照组（原样必须绿），同样跑过变异测试：把这五条分别改成不生效，
 // 这一步立刻红。没有它，谁把 `row.tagline` 改成恒 true，报表照样「有缺口 0 个」。
 STEPS.push(['persona-coverage-teeth', ['tools/test-persona-coverage-teeth.mjs', '.']]);
+// 第 25 步来自一次**真发现**：tools/inspect-character.mjs（本地第 11 步）算完
+// `fails` 打印一句「N 项未通过。」就结束了 —— 没有 process.exit。于是无论体检出
+// 什么都不可能变红。实测三个假的绿：模型目录空的说「全部通过」、指定不存在的角色
+// 先打 ✗ 再说「全部通过」、体检出 N 项不合格退出 0。第 69 条「打印了 ≠ 拦住了」
+// 一点没夸张。现在它有三道闸（0 项 / 目录不在 / fails>0），本步就是盯这三道的。
+// 造坏模型的方式是**改模型本身**（把 GLB 顶点 Y 压到 0.4 倍），不是把合格门槛改严。
+STEPS.push(['inspect-character-teeth', ['tools/test-inspect-character-teeth.mjs', '.']]);
+// 第 26 步是同一族的第二个：tools/test-realistic-pipeline.mjs（本地第 12 步）
+// 遍历同一批 GLB 打分。它原本就有退出码（process.exitCode），缺的是「一个都没验到」
+// 那道 0 条闸门 —— 已补。注意这条牙齿**慢**：它要在 Node 里用真 GLTFLoader 解析 GLB，
+// 一个场景几十秒；所以脚本内部每次调用都带了 60 秒 timeout，挂住算失败。
+STEPS.push(['realistic-pipeline-teeth', ['tools/test-realistic-pipeline-teeth.mjs', '.']]);
+// 第 27 步盯的不是某个脚本，而是**这套东西自己**：每一步的硬上限。
+// 起因是 2026-09-26 那次 —— 全套跑到第 19 步挂住，一挂 4 小时 17 分，
+// 日志停在「PASS lint-ci-refs」之后再无输出。当时每一步都是不带 timeout 的
+// spawnSync，所以「挂住」既不像失败也不像成功，就是**永远没有结论**。
+// 根因（fs.rmSync 卡在 Windows 的删除上）没能锁定，也不需要锁定：
+// 能确定的是「一步挂住 → 整套没有结论」，而这一步把那个洞补上。
+// 它同时要求：正常通过的一步仍要 exit 0、正常失败的一步退出码不能被抹平、
+// 掐完之后进程**树**要真的死（孙进程留着会继续占文件句柄 —— 最可疑的那次就是句柄）。
+STEPS.push(['step-timeout-teeth', ['tools/test-step-timeout-teeth.mjs', '.']]);
 
 const TAIL = 40;
 let fails = 0;
@@ -141,12 +162,21 @@ for (const [name, args] of STEPS) {
     continue;
   }
   const t0 = Date.now();
-  const r = spawnSync(process.execPath, args, { cwd: ROOT, encoding: 'utf8' });
+  // ★ 每一步都带硬上限 —— 详见 tools/step-runner.mjs 顶部的注释。
+  //   2026-09-26 实测：第 19 步卡在 Node 自己的 fs.rmSync 上，整套挂了 4 小时 17 分，
+  //   日志停在「PASS lint-ci-refs」之后再无输出。**挂住既不是成功也不是失败，
+  //   是永远没有结论** —— 这里把它变成一种看得见的失败（TIMEOUT）。
+  const r = await runStep(args, { cwd: ROOT, timeoutMs: DEFAULT_TIMEOUT_MS });
   const out = `${r.stdout || ''}${r.stderr || ''}`.trimEnd();
-  const ok = r.status === 0;
+  const ok = r.status === 0 && !r.timedOut;
   if (!ok) fails += 1;
-  rows.push({ name, ok, out, ms: Date.now() - t0 });
-  process.stdout.write(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : `  (${Date.now() - t0}ms)`}\n`);
+  rows.push({ name, ok, out, ms: Date.now() - t0, timedOut: r.timedOut });
+  const tag = ok ? 'PASS' : r.timedOut ? 'TIMEOUT' : 'FAIL';
+  process.stdout.write(`${tag}  ${name}${ok ? '' : `  (${Date.now() - t0}ms)`}\n`);
+  if (r.timedOut) {
+    process.stdout.write(`        超过 ${DEFAULT_TIMEOUT_MS}ms 没有结束，已按失败处理（进程树已杀）\n`);
+    process.stdout.write(`        ⚠️ 超时 ≠ 通过，也 ≠ 「这次不算」：这一步的结论是「不知道」，必须有人来看\n`);
+  }
   if (!ok) {
     const lines = out.split('\n');
     const tail = lines.slice(Math.max(0, lines.length - TAIL)).join('\n');
@@ -164,17 +194,22 @@ for (const [name, args] of STEPS) {
 //   所以这里不直接 rmSync：把它丢给子进程做，并给一个硬上限（10 秒）。
 //   超时也不要阻止收工，记一条警告就行 —— 反正这些目录本来就 match .gitignore。
 //   一句话：卡在倒数第一步比失败还可恨 —— 既没有红，也没有结论。
-function rmTree(rel) {
+// 顺手把这里也换成同一个执行器：原来用的是 spawnSync + timeout，而那个 timeout
+// 只让父进程放弃等待，**子进程还在**（它正卡在删除里）。现在超时会连进程树一起杀。
+async function rmTree(rel) {
   const abs = R(rel);
   const script = `require('fs').rmSync(${JSON.stringify(abs)}, { recursive: true, force: true })`;
-  const r = spawnSync(process.execPath, ['-e', script], { encoding: 'utf8', timeout: 10000 });
+  const r = await runStep(['-e', script], { cwd: ROOT, timeoutMs: 15000 });
   const gone = !fs.existsSync(abs);
   if (gone) process.stdout.write(`        清理 ${rel}\n`);
-  else process.stdout.write(`  ⚠️ 清理 ${rel} 没成（${r.error ? r.error.code || r.error.message : `exit=${r.status}`}）—— 留着，不挡收工\n`);
+  else {
+    const why = r.timedOut ? '清理自己挂住了（进程已杀）' : r.error || `exit=${r.status}`;
+    process.stdout.write(`  ⚠️ 清理 ${rel} 没成（${why}）—— 留着，不挡收工\n`);
+  }
 }
 
 for (const d of fs.readdirSync(ROOT)) {
-  if (d.startsWith('dist-localcheck')) rmTree(d);
+  if (d.startsWith('dist-localcheck')) await rmTree(d);
 }
 
 process.stdout.write(`\n${STEPS.length} 步，失败 ${fails} 项\n`);
