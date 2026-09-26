@@ -216,6 +216,15 @@ jobs:
           # 第 31 步是第 30 步的牙齿：那道闸自己也可能空转 —— 「它输出 PASS」不等于
           # 「它真能发现没装守卫的助手」。本步在沙盒副本上做 8 个变异逐个验它会红。
           run "assert-guards-teeth" node tools/test-assert-guards-teeth.mjs .
+          # 第 32 步把 README 里**手写的数字**跟代码连起来。起因是两次出现
+          # 「README 写着 29 步、代码已经 31 步」，两次都是碰巧改到那段才发现。
+          # 步数一律真的 spawn 一次 runtests --check-registry 去问，不自己算；
+          # 贴的 CI 原始日志按行抹掉 —— 那是当时的历史证据，改它等于改证据。
+          run "readme-steps" node tools/lint-readme-steps.mjs .
+          # 第 33 步是第 32 步的牙齿：那道闸自己也可能空转（删个正则、改坏日志行
+          # 的抹除、删掉「扫不到就红」的金丝雀，它就退化成永远绿）。本步在沙盒副本
+          # 上做 8 个变异 + 2 组对照组，期望值不硬编码，先问真实登记再据此拼判据。
+          run "readme-steps-teeth" node tools/test-readme-steps-teeth.mjs .
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
           exit $fails
