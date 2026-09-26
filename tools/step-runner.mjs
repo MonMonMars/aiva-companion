@@ -62,6 +62,11 @@ export function runStep(args, opts = {}) {
     try {
       child = spawn(process.execPath, args, {
         cwd: opts.cwd || process.cwd(),
+        // ⚠️ 以前这里不接 env：传了 `env` 也**静默无效**（spawn 会继承父进程的），
+        //    于是「我明明指定了产物目录」的测试其实一直在跑默认那份 ——
+        //    2026-09-27 就栽在这里：一份打好的新包被测成了两天前的旧包，
+        //    变异全部落空，还以为那条断言没有牙齿。不传的时候行为不变。
+        ...(opts.env ? { env: opts.env } : {}),
         stdio: ['ignore', 'pipe', 'pipe'],
         // 非 Windows 上 detached 才能拿到自己的进程组，kill(-pid) 才收得干净
         detached: process.platform !== 'win32',

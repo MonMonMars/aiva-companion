@@ -30,10 +30,17 @@ import { needBool, needLabel } from './assert-args.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(process.argv[2] || path.join(__dirname, '..'));
-const DIST = path.join(ROOT, 'dist');
+// 产物目录：默认还是 `dist`，但可以用 UI_DIST 指到别处。
+//   为什么要有这个开关：dist/ 是一个会被反复覆盖的构建产物，拿它做判据时
+//   根本不知道自己验的是哪一版源码 —— 2026-09-27 就在这里栽过一次：
+//   「人格卡 19 张 ≠ 各档位声明之和 36」红了很久，最后发现测的是两天前的旧包
+//   （源码当时已经有 20 个人格）。想分清「产品坏了」和「我验的是旧包」，
+//   就得能指着一份**刚打出来的**包跑，而不是先覆盖掉 dist/。
+const DIST = path.resolve(process.env.UI_DIST || path.join(ROOT, 'dist'));
 
 if (!fs.existsSync(path.join(DIST, 'index.html'))) {
-  console.error('dist/index.html 不存在，先跑 npx expo export --platform web');
+  console.error(`${DIST}\\index.html 不存在 —— 先打一份 web 包`
+    + '（npx expo export --platform web，或 node tools/verify-bundle.mjs . --keep 再用 UI_DIST 指过来）');
   process.exit(1);
 }
 
@@ -159,14 +166,38 @@ const PROBE = `(() => {
     if (lum(c) < 70) darkText.push({ text: t.slice(0, 18), color: c });
   }
 
+  // 卡片脚 / 档位头：**按元素**数，不按全文正则数。
+  //   ⚠️ 这两处踩的坑形状一模一样 —— 页面上别的地方还写着同样的词，
+  //     全文 match 会把它们一起算进来：
+  //       · 底部常驻 CTA 写着「开始相处 · 她」（PersonaSelect.js 306 行）—
+  //         全文 match /开始相处/ 会把它当成多出来的一张卡（报 19 而不是 18）。
+  //       · 页面顶部写着「18 位全部开放，…」（168 行，PERSONAS.length）—
+  //         全文 match /(\\d+)\\s*位/ 会把它当成第 5 个档位头，
+  //         于是「各档位之和」凭空多出 18（报 36 而不是 18）。
+  //   所以这里要求**整段文本恰好等于那个词**，多一个字都不算。
+  const ownsText = (e) => [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+  let starts = 0, conts = 0;
+  const tierMeta = [];
+  for (const e of els) {
+    if (SKIP_TAGS.has(e.tagName)) continue;
+    if (!ownsText(e)) continue;
+    const t = e.textContent.trim();
+    if (t === '开始相处') starts++;
+    else if (t === '继续这段关系') conts++;
+    else {
+      // \\s* 而不是单个空格：RN Web 渲染出来的空白可能被折叠或换成别的空白字符，
+      // 写死一个空格会一个都匹配不到（实测第一版返回 0）。
+      const m = t.match(/^(\\d+)\\s*位$/);
+      if (m) tierMeta.push(parseInt(m[1], 10));
+    }
+  }
+
   return JSON.stringify({
     ready: txt.includes('今天想陪在谁身边？'),
     nodes: els.length,
-    starts: (txt.match(/开始相处/g) || []).length,
-    conts: (txt.match(/继续这段关系/g) || []).length,
-    // \\s* 而不是单个空格：RN Web 渲染出来的空白可能被折叠或换成别的空白字符，
-    // 写死一个空格会一个都匹配不到（实测第一版返回 0）。
-    tierMeta: (txt.match(/(\\d+)\\s*位/g) || []).map((s) => parseInt(s, 10)),
+    starts,
+    conts,
+    tierMeta,
     sample: txt.slice(0, 260),
     bgTop: top(bg, 8),
     fgTop: top(fg, 8),
