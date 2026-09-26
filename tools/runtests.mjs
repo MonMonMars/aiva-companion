@@ -325,6 +325,24 @@ const REG_CHECK = REG.verify(ROOT);
   }
   process.stdout.write(`  ✓ 登记齐全 —— 开跑\n\n`);
 }
+// --list-steps：把登记表原样吐出来，`步骤名\t自己的脚本\t盯它的牙齿脚本`（没有就空），
+//   然后退出。存在的理由和第 28 步那批开关一样，是为了**不给登记表留第二份副本**：
+//   第 34 步要挨个跑所有牙齿脚本，它必须来这里问，而不是自己在 runtests.mjs
+//   上再写一遍 `teeth:` 的正则 —— 这个仓库里「两份逻辑飘开」出现过四次，
+//   多一份副本就多一份飘的机会（扫到 0 条就静默全绿，是最难发现的一种）。
+//   一次给三列而不是只给「谁盯谁」：自称牙齿的那些步骤，自己也在登记表里，
+//   光看 teeth: 那一列只能看到 6 条，会漏掉另外 7 个牙齿脚本。
+if (ARGV.includes('--list-steps')) {
+  for (const [name, args] of STEPS) {
+    const d = DECL.get(name) || {};
+    // 取**最后一个** .mjs：带 `--import ./tools/src-resolve.mjs` 的那几步，
+    //   第一个 .mjs 是 loader，不是要跑的脚本。
+    const self = args.filter((a) => a.endsWith('.mjs')).pop() || '';
+    process.stdout.write(`${name}\t${self}\t${d.teeth || ''}\n`);
+  }
+  process.exit(0);
+}
+
 if (CHECK_ONLY) process.exit(0);
 
 const TAIL = 40;
