@@ -1,6 +1,6 @@
 // 第 34 步：每个「自称牙齿」的脚本，都必须真的验到了东西。
 // ---------------------------------------------------------------------------
-// 起因：欠账单上那 13 个自认「未验证」的步骤，唯一凭据是「当初做过变异测试」。
+// 起因：欠账单上那 14 个自认「未验证」的步骤，唯一凭据是「当初做过变异测试」。
 //    这正是反复说过的那个形状 —— **「下次记得」不算防线**。
 //    当时的证据会过期：脚本后来被人改过、依赖的产物没了、sanity 分支悄悄放行，
 //    而登记表只会照旧打出「20 步有常驻牙齿」，一行都不带红的。
@@ -10,9 +10,12 @@
 //   ① 它在干净的仓库上跑完是绿的（退出码 0）
 //   ② 它**真的验到了东西** —— 输出里必须有场景结论
 //   ③ 它跑完工作区**没有变化**（变异改坏了没还原、沙盒没删，都会被抓住）
+//   ④ 它跑完**产物目录还在**（dist / dist-localcheck-*。这些目录 match .gitignore，
+//      git status 看不见，所以③ 抓不到「某一步把下一步要用的产物删了」——
+//      CI #66/#67 连红三轮就是这么白的，详见下面 distDirs() 处的注释）
 //
 // ② 为什么用「有没有场景结论」这么松的判据（实测数据）：
-//    13 个脚本挨个跑过一遍，12 个的输出里都有 PASS / ✅ 之类结论标记；
+//    第一次跑的时候 13 个脚本挨个跑过一遍，12 个的输出里都有 PASS / ✅ 之类结论标记；
 //    唯一没有的那个，正是**真的什么都没验**的那个 ——
 //      test-smoke-runtime-teeth.mjs 在 dist-localcheck-web 不存在时打印
 //      「⚠️ 跳过：没有 dist-localcheck-web …」然后 exit(0)。
@@ -116,6 +119,31 @@ function gitStatus(root) {
   return r.stdout;
 }
 
+// 产物目录清单（dist / dist-localcheck-*）。
+//   ★ 为什么 git status 之外还要单独看它：这些目录 **match .gitignore**，
+//     被删掉时 `git status --porcelain` 一行都不会变 —— 判据③ 完全瞎。
+//     2026-09-27 CI #66/#67 连红三轮就是这个形状：assertion-teeth 里那条
+//     bundle 变异用例先删掉 dist-localcheck-web 再打包失败，真产物没了，
+//     紧跟其后的 smoke-runtime-teeth 报「找不到可跑的产物」，
+//     而每一步的「跑完工作区没变化」全是绿的（git 看不见 dist-*）。
+function distDirs(root) {
+  try {
+    return fs
+      .readdirSync(root)
+      .filter((d) => d === 'dist' || d.startsWith('dist-localcheck'))
+      .filter((d) => {
+        try {
+          return fs.statSync(path.join(root, d)).isDirectory();
+        } catch {
+          return false;
+        }
+      })
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
 // ---- 开跑 ----------------------------------------------------------------
 console.log('【第 34 步】每个自称牙齿的脚本，是不是真的验到了东西');
 
@@ -157,12 +185,35 @@ for (const f of onDisk) {
   check(false, `tools/ 下有牙齿脚本「${f}」没登记进套装 —— 它不会被任何人跑，等于没有`);
 }
 
+// ⚠️ 判据③ 比的是「这个脚本跑之前 vs 之后」。要是**别的进程**（或者你自己）
+//    正好在这段时间里改了工作区，那句「多出来的」就会把别人的改动算到被测脚本
+//    头上 —— 2026-09-27 实测：我在它跑的中间改了 README 和第 35 步脚本，
+//    于是 smoke-runtime-teeth 和 assertion-teeth 各背了一条假阳性，
+//    白查半天。基线不干净就先说一句，别让下一个照着假线索走。
+const BASE_DIRTY = gitStatus(ROOT).trim();
+if (BASE_DIRTY) {
+  console.log(`\n  ⚠️ 开跑时工作区**不干净**（${BASE_DIRTY.split('\n').length} 项）——`);
+  console.log(`     判据③ 会把这段时间里别人的改动算到被测脚本头上；出现红项先看是不是它。`);
+}
+
+// 开跑时先记一份产物目录清单 —— 判据④ 要比的是「有没有消失」。
+//   开跑时一个都没有（比如第 35 步的沙盒副本）就整条跳过：那条判据在这种情况下
+//   没有可比的基线，硬判只会让沙盒里的场景全部假红。
+const DIST_BEFORE = distDirs(ROOT);
+if (DIST_BEFORE.length) {
+  console.log(`\n  开跑时的产物目录：${DIST_BEFORE.join(' / ')}`);
+  console.log(`  （dist-* match .gitignore，git status 看不见它被删 —— 所以下面单独盯一遍）`);
+}
+
 let totalMs = 0;
 for (const t of teeth) {
   const abs = path.join(ROOT, t.script);
   console.log(`\n  ▸ ${t.script}（${t.why}）`);
+  // 每条判据的消息都**带上脚本名**：结尾那份「没达标的 N 项」重述里只有消息本身，
+  //   不带名字的话 CI 上只知道「1 项没达标」，不知道是谁 —— #67 就是这么白的。
+  const ck = (cond, msg) => check(cond, `${t.script}：${msg}`);
   if (!fs.existsSync(abs)) {
-    check(false, `脚本存在（登记表指向 ${t.script}，但文件不在）`);
+    ck(false, `脚本存在（登记表指向 ${t.script}，但文件不在）`);
     continue;
   }
 
@@ -175,15 +226,33 @@ for (const t of teeth) {
   const after = gitStatus(ROOT);
   const out = `${r.stdout}\n${r.stderr}`;
 
-  check(r.status === 0, `跑完是绿的（exit=${r.status}${r.timedOut ? '，且被掐掉了 —— 超时算失败' : ''}，${Math.round(r.ms / 1000)}s）`);
-  check(
+  ck(r.status === 0, `跑完是绿的（exit=${r.status}${r.timedOut ? '，且被掐掉了 —— 超时算失败' : ''}，${Math.round(r.ms / 1000)}s）`);
+  ck(
     VERDICT.test(out),
     `输出里有场景结论（一个 PASS/✅ 都没有 = 它多半跳过了、什么都没验 —— 跳过的牙齿等于没牙齿）`
   );
-  check(before === after, `跑完工作区没变化（变异没还原 / 沙盒没删都会在这里响）`);
+  ck(before === after, `跑完工作区没变化（变异没还原 / 沙盒没删都会在这里响）`);
   if (before !== after) {
     const add = after.split('\n').filter((l) => l && !before.includes(l));
     console.log(`      多出来的：${add.slice(0, 5).join(' ; ')}`);
+  }
+
+  if (DIST_BEFORE.length) {
+    const now = distDirs(ROOT);
+    const gone = DIST_BEFORE.filter((d) => !now.includes(d));
+    ck(
+      gone.length === 0,
+      `跑完产物目录还在（少了：${gone.join('、') || '（没少）'}）`
+    );
+  }
+
+  // 红了就把**它自己说的话**贴出来：只看「exit=1」没法动手 ——
+  //   是脚本崩了、是产物没了、还是断言真的被放宽了，全在它自己的输出里。
+  //   #66/#67 两轮都是靠「猜 + 按耗时反推」才定位的，因为日志里没有这一段。
+  if (r.status !== 0 || !VERDICT.test(out)) {
+    const lines = out.trim().split('\n');
+    console.log(`      —— 它自己说（末 ${Math.min(30, lines.length)} 行）——`);
+    console.log(lines.slice(-30).map((l) => `      ${l}`).join('\n'));
   }
 }
 

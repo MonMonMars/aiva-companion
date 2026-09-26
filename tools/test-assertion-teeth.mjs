@@ -296,13 +296,19 @@ const CASES = [
     // ⚠️ 只验 web 那一半：ios 要 21 秒，而这里是**常驻**检查，不值得每次都付。
     //    两边共用同一条 Metro 解析链，web 会红的那一族 ios 也会红。
     //
-    // ⚠️⚠️ `--keep` **不能省**：不带它时 verify-bundle 收尾会 `fs.rmSync(dist-localcheck-web)`，
-    //    而在这个机器上删那个目录会**挂住不返回**（第 27 步补的有上限清理器就是为这个写的，
-    //    但那是 runtests 那一层，脚本自己这行没人兜）。实测：不带 --keep 时
-    //    对照组跑到 180 秒硬上限被杀 —— 打包其实 3.1 秒就成功了，卡的是清理。
-    //    代价是本步跑完之后 dist-localcheck-web 里留的是**变异那一轮的残骸**，
-    //    不再是第 16 步的产物；本步排在冒烟之后，没有后续步骤依赖它。
-    step: ['tools/verify-bundle.mjs', '.', '--platform', 'web', '--keep'],
+    // ⚠️⚠️ `--out` **不能省**（2026-09-27 CI #66/#67 连红三轮查出来的）：
+    //    verify-bundle 打包前会**无条件先删输出目录**，而本用例的变异注定打包失败 ——
+    //    于是目录被删掉、又建不回来。用默认目录就等于把第 17 步 --keep 留给
+    //    第 18 步冒烟的真产物抹掉，紧跟其后的第 34 步（它要挨个真跑所有牙齿脚本）
+    //    就会在 smoke-runtime-teeth 上「找不到可跑的产物」而红。
+    //    只在 CI 上暴露：本地另有一份 dist/ 能兜底，CI 上只有 dist-localcheck-web。
+    //    指到独立前缀之后，这里怎么删都碰不到真产物。
+    //
+    //    `--keep` 也不能省：不带它时 verify-bundle 收尾会 `fs.rmSync(...)`，
+    //    而在这台机器上删那种目录会**挂住不返回**（第 27 步补的有上限清理器写在
+    //    runtests 那一层，脚本自己这行没人兜）。实测：不带 --keep 时对照组跑到
+    //    180 秒硬上限被杀 —— 打包其实 3.1 秒就成功了，卡的是清理。
+    step: ['tools/verify-bundle.mjs', '.', '--platform', 'web', '--keep', '--out', 'dist-localcheck-assertteeth'],
     file: 'src/lib/netFetch.js',
     mutate: (s) => s + "\nimport './__mutation_missing.js';\n",
     mustSay: ['打包失败'],

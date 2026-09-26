@@ -6,6 +6,7 @@
 //   ① 跑完是绿的           → 让夹具崩掉（exit 1）
 //   ② 输出里有场景结论      → 让夹具空转 / 让它「跳过」（就是真出过事的那种）
 //   ③ 跑完工作区没变化      → 让夹具留一个文件不收
+//   ③b 产物目录还在         → 让夹具删掉 dist-localcheck-web（git status 看不见的那种）
 //   ④ 问得到登记表          → 让 --list-steps 吐不出东西
 //   ⑤ 未登记例外还在原位    → 把那个被点名豁免的文件删掉
 //   ⑥ 未登记的牙齿脚本要响  → 往 tools/ 里丢一个新的 test-*teeth*.mjs
@@ -15,8 +16,8 @@
 //   ⑨ 把判据 ② 的正则放宽到「什么都算结论」，再喂一个空转脚本
 //      → 闸会**假绿**。这一条期望绿，是故意的：它演示「没有这条判据会怎样」。
 //
-// ⚠️ 为什么用夹具而不是真跑那 13 个：第 34 步真跑一遍要 153s，
-//    10 个场景就是 25 分钟。所以沙盒里把登记表**裁到只剩两个夹具步骤**，
+// ⚠️ 为什么用夹具而不是真跑那 14 个：第 34 步真跑一遍要 153s，
+//    11 个场景就是 25 分钟。所以沙盒里把登记表**裁到只剩两个夹具步骤**，
 //    一次闸门运行压到 1~2 秒。裁的方式是按锚点切开 runtests.mjs 换掉中间那段，
 //    不是自己另写一份登记表 —— 头部/尾部（含 --list-steps 那个出口）仍是真的。
 //
@@ -102,6 +103,11 @@ function buildSandbox() {
   fs.writeFileSync(path.join(SB, 'tools/zz-teeth.mjs'), FIXTURE_OK);
   fs.writeFileSync(path.join(SB, 'tools/zz-other-teeth.mjs'), FIXTURE_OTHER_OK);
   fs.writeFileSync(path.join(SB, 'tools/zz-guarded.mjs'), FIXTURE_GUARDED);
+  // ⚠️ 沙盒也要有一份和真仓库同款的 .gitignore（至少 dist-*/ 那一条）：
+  //    真仓库里产物目录是 gitignore 的，所以「某一步把产物删了」这件事
+  //    git status 一句都不会说 —— 判据③ 抓不到，才需要判据③b。
+  //    沙盒里不照抄这条，③b 的场景就会被 ③ 顺手抓走，看不出 ③b 自己有没有牙齿。
+  fs.writeFileSync(path.join(SB, '.gitignore'), 'dist-*/\nnode_modules/\n');
   // 第 34 步用 git status 判断「有没有残留」，沙盒得是个 git 仓库，
   //   否则 git 会顺着目录往上找到**真仓库**，拿真仓库的状态来比对 —— 那就全乱了。
   const g = spawnSync('git', ['init'], { cwd: SB, encoding: 'utf8' });
@@ -171,6 +177,26 @@ const scenarios = [
     expect: 1,
     expectText: '跑完工作区没变化',
     why: '判据③：变异没还原 / 沙盒没删，都在这里响',
+  },
+  {
+    id: '③b 夹具删掉产物目录（git status 看不见的那种）',
+    mutate: () => {
+      // 造一份假产物 —— 第 34 步认的是「目录名 + index.html」，不需要真打包
+      fs.mkdirSync(path.join(SB, 'dist-localcheck-web'), { recursive: true });
+      fs.writeFileSync(path.join(SB, 'dist-localcheck-web', 'index.html'), '<html></html>\n');
+      // 先打印结论再删：① ② 都照绿，只有 ③b 该红 —— 单一变量，红得干净
+      write(
+        'tools/zz-teeth.mjs',
+        [
+          "console.log('  ✓ 夹具：做了一次实验，结论是通过');",
+          "console.log('[zz-teeth] PASS');",
+          "require('node:fs').rmSync('dist-localcheck-web', { recursive: true, force: true });",
+        ].join('\n')
+      );
+    },
+    expect: 1,
+    expectText: '跑完产物目录还在',
+    why: '判据③b：产物目录 match .gitignore，git status 一句都不会说 —— 少了这条，CI #66/#67 那种「上一步把下一步要用的产物删了」永远没人响',
   },
   {
     id: '⑤ 登记表吐不出东西',

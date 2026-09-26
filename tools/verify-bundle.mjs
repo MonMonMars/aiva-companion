@@ -22,7 +22,8 @@
 //
 // 实测：热缓存下 web 6 秒、iOS 21 秒。慢得值 —— 它挡的是「推上去才炸」。
 //
-// 用法：node tools/verify-bundle.mjs [项目根目录] [--platform web,ios] [--keep]
+// 用法：node tools/verify-bundle.mjs [项目根目录] [--platform web,ios] [--keep] [--out <前缀>]
+//   --out 默认 dist-localcheck；换成别的前缀即可把产物写进另一处，不动默认那份。
 import { spawnSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
@@ -33,6 +34,16 @@ const argv = process.argv.slice(3);
 const platformArg = argv.includes('--platform') ? argv[argv.indexOf('--platform') + 1] : null;
 const PLATFORMS = platformArg ? platformArg.split(',') : ['web', 'ios'];
 const KEEP = argv.includes('--keep');
+// ⚠️ --out <前缀>：给「只想验打包能不能过、根本不需要产物」的调用方一条独立的
+//    输出目录，别去动默认那份。
+//    起因（2026-09-27，CI #66/#67 连红三轮才查到）：test-assertion-teeth.mjs 那条
+//    bundle 变异用例用的是默认目录，而这里**打包前会无条件先删**（见下面的 rmSync）。
+//    变异是「引用一个不存在的模块」—— 注定打包失败，于是目录被删掉又建不回来，
+//    第 17 步（bundle(web+ios) --keep）留给第 18 步冒烟的真产物就这么没了。
+//    只在 CI 上暴露：本地还留着一份 dist/ 能兜底（findDist 三选一会退到它），
+//    CI 上只有 dist-localcheck-web 这一份，紧跟其后的第 34 步就找不到产物了。
+//    前缀仍以 dist-localcheck 开头，好让 runtests 收工那遍清理顺手扫到。
+const OUT_PREFIX = argv.includes('--out') ? argv[argv.indexOf('--out') + 1] : 'dist-localcheck';
 
 // @expo/cli 在 npm 扁平化后常常嵌在 expo/node_modules 里，两个位置都找一遍
 const CLI_CANDIDATES = [
@@ -51,14 +62,17 @@ const summary = [];
 let failed = false;
 
 for (const plat of PLATFORMS) {
-  const out = path.join(ROOT, `dist-localcheck-${plat}`);
+  const dirName = `${OUT_PREFIX}-${plat}`;
+  const out = path.join(ROOT, dirName);
   // 先清掉上一次的，免得旧产物混进来让失败伪装成成功
+  //   ⚠️ 这一行**只删自己那份**（dirName），用 --out 指到别处就碰不到默认目录 ——
+  //     上面那次事故的根源就是「打包失败时这一行已经执行了，而重建它的那一步没成功」。
   fs.rmSync(out, { recursive: true, force: true });
 
   const t0 = Date.now();
   const r = spawnSync(
     process.execPath,
-    [cli, 'export', '--platform', plat, '--output-dir', `dist-localcheck-${plat}`],
+    [cli, 'export', '--platform', plat, '--output-dir', dirName],
     {
       cwd: ROOT,
       encoding: 'utf8',
