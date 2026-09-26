@@ -19,6 +19,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { needBool, needLabel } from './assert-args.mjs';
 
 import { createBuiltinMorphHandle } from '../src/anim/morphData.js';
 import { createLipSync } from '../src/anim/lipSync.js';
@@ -31,6 +32,11 @@ const GLB = process.argv[2] || path.join(here, '..', 'assets', 'models2', 'kizun
 let pass = 0;
 let fail = 0;
 const ok = (cond, label, detail = '') => {
+  // 守卫的作用：参数顺序写反时，条件位拿到非空字符串 = 永真，断言从此永远绿
+  //   （tools/test-with-timeout.mjs 出过一次，输出里打的是「✓ false」）。
+  //   由第 30 步 tools/lint-assert-guards.mjs 盯着「每个断言函数都装了它」。
+  needBool(cond, 'ok(cond, label)');
+  needLabel(label, 'ok(cond, label)');
   if (cond) { pass++; console.log(`  ✅ ${label}${detail ? ` — ${detail}` : ''}`); }
   else { fail++; console.log(`  ❌ ${label}${detail ? ` — ${detail}` : ''}`); }
   return cond;

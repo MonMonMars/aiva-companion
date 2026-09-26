@@ -15,6 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runStep, pidAlive } from './step-runner.mjs';
+import { needBool, needLabel } from './assert-args.mjs';
 
 // ⚠️ 用 fileURLToPath 而不是 new URL(...).pathname：后者在 Windows 上会给出
 //    `/C:/Users/...` 这种带前导斜杠的路径，path.resolve 之后根目录是错的 ——
@@ -25,6 +26,7 @@ const LIMIT = 2000;
 
 let bad = 0;
 const check = (cond, msg) => {
+  needBool(cond, 'check()'); needLabel(msg, 'check()');
   console.log(`  ${cond ? '✓' : '✗'} ${msg}`);
   if (!cond) bad++;
 };

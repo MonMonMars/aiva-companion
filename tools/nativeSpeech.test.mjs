@@ -15,6 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSrc } from './lib/loadSrc.mjs';
+import { needBool, needLabel } from './assert-args.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -38,6 +39,7 @@ const { findTTS, TTS_PROVIDERS } = provMod;
 
 let fail = 0;
 const ck = (cond, label, extra = '') => {
+  needBool(cond, 'ck()'); needLabel(label, 'ck()');
   console.log(`${cond ? '  ✓' : '  ✗'} ${label}${extra ? '\n      ' + extra : ''}`);
   if (!cond) fail++;
 };

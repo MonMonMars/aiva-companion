@@ -19,6 +19,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { rmTreeBounded } from './step-runner.mjs';
+import { needBool, needLabel } from './assert-args.mjs';
 
 const ROOT = path.resolve(process.argv[2] || path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
 const SCRIPT = 'tools/test-realistic-pipeline.mjs';
@@ -27,6 +28,7 @@ const SB = path.join(ROOT, '_teeth_sb_rp');
 
 let fails = 0;
 const check = (cond, msg) => {
+  needBool(cond, 'check()'); needLabel(msg, 'check()');
   console.log(`  ${cond ? '✓' : '✗'} ${msg}`);
   if (!cond) fails++;
 };
@@ -52,6 +54,13 @@ function makeSandbox(models) {
     fs.mkdirSync(path.join(SB, 'tools'), { recursive: true });
     fs.mkdirSync(path.join(SB, 'assets', 'models2'), { recursive: true });
     fs.copyFileSync(path.join(ROOT, SCRIPT), path.join(SB, SCRIPT));
+    // ⚠️ 被测脚本现在 import 了 ./assert-args.mjs（第 30 步给断言助手装的守卫）。
+    //    沙盒里少这个文件，脚本根本起不来 —— ERR_MODULE_NOT_FOUND，退出码非 0。
+    //    ⚠️ 危险在于那样**所有「要求红」的场景依然会通过**（模块找不到也是一种红），
+    //    只有对照组指出真相。所以依赖必须跟脚本一起复制，别指望测试能替你发现。
+    for (const dep of ['assert-args.mjs']) {
+      fs.copyFileSync(path.join(ROOT, 'tools', dep), path.join(SB, 'tools', dep));
+    }
     copyDir(path.join(ROOT, 'src'), path.join(SB, 'src'));
     sbReady = true;
   }

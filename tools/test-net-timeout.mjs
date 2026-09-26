@@ -14,9 +14,11 @@
  * 用法：node tools/test-net-timeout.mjs
  */
 import { netFetch, NET_TIMEOUT_MS, NET_TIMEOUT_CODE } from '../src/lib/netFetch.js';
+import { needBool, needLabel } from './assert-args.mjs';
 
 let pass = 0, fail = 0;
 const ok = (cond, name, extra = '') => {
+  needBool(cond, 'ok()'); needLabel(name, 'ok()');
   if (cond) { pass++; console.log('  ✓', name); }
   else { fail++; console.log('  ✗', name, extra); }
 };
@@ -164,6 +166,37 @@ console.log('\n— 自检：不套 netFetch 的话，挂起真的没有出口 �
   );
   await new Promise((r) => setTimeout(r, 200));
   ok(settled3 === false, '对不认 signal 的 fetch，裸调用 200ms 后仍未落定');
+}
+
+// 上限必须**原样**用掉（不看墙钟）
+//
+// 起因（2026-09-26 实测出来的洞，跟 auth-timeout 那两处同时查出来的）：
+// 上面那两句写的是 `dt >= 75 && dt < 2000` / `dt >= 110 && dt < 2000`，
+// 而这里传的上限是 80ms / 120ms —— **16~25 倍宽**。把 netFetch.js 里的
+// `ms` 改成 `ms * 2`，**整套全绿**（exit 0、0 条 ✗）；
+// 改成 `ms * 5` 时虽然会红，但红的是别处两条（cap 撞上限 / 自捡等 200ms），
+// **「确实等到了上限才放弃」那句照样一声没吭**。
+//
+// 所以这里补一条不看墙钟的判据：把 globalThis.setTimeout 换成记录器，
+// 盯「排进计时器的那个毫秒数」是不是原样传进去的那个。
+console.log('\n— 上限必须**原样**用掉（不看墙钟）—');
+{
+  stubHang();
+  const recorded = [];
+  const realSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = (fn, ms, ...rest) => {
+    recorded.push(ms);
+    return realSetTimeout(fn, ms, ...rest);
+  };
+  try {
+    // 这里**不能用 callCapped** —— 它自己会排一个 3000ms 的盖子进同一个计时器，
+    // 录到的东西就分不清是谁的了。挂起那次一定会超时抛错，catch 掉即可。
+    await netFetch('https://example.com/ms', {}, 80).catch(() => {});
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+  }
+  ok(recorded.length === 1 && recorded[0] === 80,
+    `netFetch 排进计时器的就是传进去的那 80ms（实际 ${recorded.join(' / ') || '一次都没排'}）`);
 }
 
 globalThis.fetch = realFetch;

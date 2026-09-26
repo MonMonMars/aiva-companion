@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { rmTreeBounded } from './step-runner.mjs';
+import { needBool, needLabel } from './assert-args.mjs';
 
 const ROOT = path.resolve(process.argv[2] || path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
 const SB = path.join(ROOT, '_personasb');
@@ -25,7 +26,11 @@ const NODE = process.execPath;
 const SRC = ['src/theme.js', 'src/llm.js', 'src/anim/idlePoses.js', 'src/backgrounds.js'];
 
 let fails = 0;
-const check = (cond, msg) => { console.log((cond ? '  ✓ ' : '  ✗ ') + msg); if (!cond) fails++; };
+const check = (cond, msg) => {
+  needBool(cond, 'check()'); needLabel(msg, 'check()');
+  console.log((cond ? '  ✓ ' : '  ✗ ') + msg);
+  if (!cond) fails++;
+};
 
 fs.rmSync(SB, { recursive: true, force: true });   // 第 61 条：先删干净，旧证据会冒充新证据
 

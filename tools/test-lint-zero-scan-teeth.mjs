@@ -19,13 +19,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { rmTreeBounded } from './step-runner.mjs';
+import { needBool, needLabel } from './assert-args.mjs';
 
 const ROOT = path.resolve(process.argv[2] || path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
 const SB = path.join(ROOT, '_teethsb');           // 沙盒：造坏掉的仓库副本
 const NODE = process.execPath;
 
 let fails = 0;
-const check = (cond, msg) => { console.log((cond ? '  ✓ ' : '  ✗ ') + msg); if (!cond) fails++; };
+const check = (cond, msg) => {
+  needBool(cond, 'check()'); needLabel(msg, 'check()');
+  console.log((cond ? '  ✓ ' : '  ✗ ') + msg);
+  if (!cond) fails++;
+};
 const run = (script, args, cwd) => {
   const r = spawnSync(NODE, [path.isAbsolute(script) ? script : path.join(ROOT, script), ...args],
     { encoding: 'utf8', cwd: cwd || ROOT, maxBuffer: 1 << 24 });

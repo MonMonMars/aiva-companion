@@ -14,13 +14,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { rmTreeBounded } from './step-runner.mjs';
+import { needBool, needLabel } from './assert-args.mjs';
 
 const ROOT = path.resolve(process.argv[2] || path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
 const SB = path.join(ROOT, '_rulesb');
 const NODE = process.execPath;
 
 let fails = 0;
-const check = (cond, msg) => { console.log((cond ? '  ✓ ' : '  ✗ ') + msg); if (!cond) fails++; };
+const check = (cond, msg) => {
+  needBool(cond, 'check()'); needLabel(msg, 'check()');
+  console.log((cond ? '  ✓ ' : '  ✗ ') + msg);
+  if (!cond) fails++;
+};
 
 fs.rmSync(SB, { recursive: true, force: true });   // 先删干净（第 61 条：旧证据会冒充新证据）
 

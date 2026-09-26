@@ -19,9 +19,11 @@
  * 用法：node --import ./tools/src-resolve.mjs tools/test-auth-timeout.mjs
  */
 import { authCall, dbCall, authErrorMessage, AUTH_TIMEOUT_MS, DB_TIMEOUT_MS } from '../src/lib/cloudClient.js';
+import { needBool, needLabel } from './assert-args.mjs';
 
 let pass = 0, fail = 0;
 const ok = (cond, name, extra = '') => {
+  needBool(cond, 'ok()'); needLabel(name, 'ok()');
   if (cond) { pass++; console.log('  ✓', name); }
   else { fail++; console.log('  ✗', name, extra); }
 };
@@ -124,6 +126,39 @@ console.log('\n— 自检：不套 authCall 的话，挂起真的没有出口 �
   authCall(never, 60).then(() => { settled2 = true; });
   await new Promise((r) => setTimeout(r, 200));
   ok(settled2 === true, '套了 authCall 的同一个挂起 promise 会落定');
+}
+
+// 上限必须**原样**用掉（不看墙钟）
+//
+// 起因（2026-09-26 实测出来的洞）：上面那句「确实等到了上限才放弃」写的是
+// `dt >= 75 && dt < 2000`，而这里传的上限是 80ms —— **25 倍宽**。
+// 把 cloudClient.js 里的 `ms` 改成 `ms * 2` / `ms * 5` 试过：
+//     ×2  → 整套全绿；
+//     ×5  → 只有别处那条自捡（等 200ms）撞红，**核心那句一次都没红**；
+//     dbCall 更彻底 —— 连 ×5 都**整套全绿**（exit 0、0 条 ✗）。
+// 也就是说那句断言**盯不出上限被改写**，它只是顺便在记秒表。
+//
+// 这里的判据不看墙钟：把 globalThis.setTimeout 换成记录器，
+// 盯「排进计时器的那个毫秒数」是不是原样传进去的那个。
+// 乘倍数 / 加常数 / 换单位都躲不掉，而且跟机器快慢无关，永远不会飘。
+console.log('\n— 上限必须**原样**用掉（不看墙钟）—');
+for (const [who, ms, call] of [
+  ['authCall', 80, () => authCall(never, 80)],
+  ['dbCall', 120, () => dbCall(never, 120)],
+]) {
+  const recorded = [];
+  const realSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = (fn, ms_, ...rest) => {
+    recorded.push(ms_);
+    return realSetTimeout(fn, ms_, ...rest);
+  };
+  try {
+    await call();
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+  }
+  ok(recorded.length === 1 && recorded[0] === ms,
+    `${who} 排进计时器的就是传进去的那 ${ms}ms（实际 ${recorded.join(' / ') || '一次都没排'}）`);
 }
 
 await new Promise((r) => setTimeout(r, 100));

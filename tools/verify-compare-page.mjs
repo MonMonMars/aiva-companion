@@ -34,6 +34,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
+import { needBool, needLabel } from './assert-args.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -315,7 +316,11 @@ try {
   }
 
   const problems = [];
-  const ok = (c, m) => { if (!c) problems.push(m); };
+  const ok = (c, m) => {
+    needBool(c, 'ok(c, m)');
+    needLabel(m, 'ok(c, m)');
+    if (!c) problems.push(m);
+  };
   ok(st.options === 11, `下拉框只有 ${st.options} 项（应为 11）`);
   ok(st.rows === 11, `表格只有 ${st.rows} 行（应为 11）`);
   ok(st.nameB && st.nameB !== '—', 'B 侧角色名还是 "—"，说明 UI 脚本没跑完');

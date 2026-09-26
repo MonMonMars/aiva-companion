@@ -42,6 +42,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verifyRegistry } from './step-registry.mjs';
 import { runStep, rmTreeBounded } from './step-runner.mjs';
+import { needBool, needLabel } from './assert-args.mjs';
 
 // ⚠️ 用 fileURLToPath，不用 new URL(...).pathname：后者在 Windows 上给出
 //    `/C:/Users/...`，path.resolve 之后根目录是错的 —— 沙盒会建到别处去，
@@ -52,6 +53,7 @@ const SB_TOOLS = path.join(SB, 'tools');
 
 let bad = 0;
 const check = (cond, msg) => {
+  needBool(cond, 'check()'); needLabel(msg, 'check()');
   console.log(`  ${cond ? '✓' : '✗'} ${msg}`);
   if (!cond) bad++;
 };

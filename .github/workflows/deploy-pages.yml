@@ -207,6 +207,15 @@ jobs:
           # ⚠️ 它会临时改真实源文件再还原（三重保险 + 收工比对 sha256），
           #    放在这一步之后、Summary 之前。
           run "assertion-teeth" node tools/test-assertion-teeth.mjs .
+          # 第 30 步盯的是**断言这件工具本身**。这仓库里二十几个断言助手的参数顺序
+          # 并不统一（`(条件, 标签)` / `(标签, 条件)` 都有），写反的时候条件位拿到
+          # 非空字符串就恒真，那条断言从此永远绿 —— test-with-timeout.mjs 出过一次。
+          # 补完一批守卫之后，「下一个断言助手谁来提醒」没有答案，那是「下次记得」。
+          # 这一步按形状认断言助手（不是认文件名），逐个要求必填参数装了守卫。
+          run "assert-guards" node tools/lint-assert-guards.mjs .
+          # 第 31 步是第 30 步的牙齿：那道闸自己也可能空转 —— 「它输出 PASS」不等于
+          # 「它真能发现没装守卫的助手」。本步在沙盒副本上做 8 个变异逐个验它会红。
+          run "assert-guards-teeth" node tools/test-assert-guards-teeth.mjs .
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
           exit $fails

@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import * as THREE from 'three';
 import jpeg from 'jpeg-js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { needBool, needLabel } from './assert-args.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const modelsDir = path.join(root, 'assets', 'models');
@@ -61,6 +62,7 @@ const PERSONA = {
 
 let failed = 0;
 const check = (cond, label, extra = '') => {
+  needBool(cond, 'check()'); needLabel(label, 'check()');
   console.log(`${cond ? '  ✓' : '  ✗'} ${label}${extra ? '  ' + extra : ''}`);
   if (!cond) failed++;
 };

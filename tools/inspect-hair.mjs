@@ -21,6 +21,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { needBool, needLabel } from './assert-args.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -388,7 +389,11 @@ console.log('');
 let fails = 0;
 for (const r of rows) {
   const problems = [];
-  const check = (c, m) => { if (!c) problems.push(m); };
+  const check = (c, m) => {
+    needBool(c, 'check(c, m)');
+    needLabel(m, 'check(c, m)');
+    if (!c) problems.push(m);
+  };
   // 遮脸：眉带以下、最前面一层是头发的格子占比。>12% 就是"帘子糊脸"。
   check(r.faceBlock < 0.12, `遮脸 ${(r.faceBlock * 100).toFixed(1)}%（应 <12%，超标=刘海压到脸上）`);
   // 遮眼：眼睛高度带的遮挡率。

@@ -20,6 +20,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { needBool, needLabel } from './assert-args.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -349,7 +350,11 @@ const bandOf = (name) => HEAD_BANDS[name] || { lo: 6.8, hi: 8.6, why: '写实成
 // （fails 已提前到 rows 旁边声明 —— 那里就要开始计数）
 for (const r of rows) {
   const problems = [];
-  const check = (cond, msg) => { if (!cond) problems.push(msg); };
+  const check = (cond, msg) => {
+    needBool(cond, 'check(cond, msg)');
+    needLabel(msg, 'check(cond, msg)');
+    if (!cond) problems.push(msg);
+  };
   const band = bandOf(r.name);
 
   check(r.headsTallMesh >= band.lo && r.headsTallMesh <= band.hi,

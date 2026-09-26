@@ -24,6 +24,7 @@ import { createRigDriver } from '../src/three/rigDriver.js';
 import { createPoseScheduler } from '../src/anim/poseScheduler.js';
 import { IDLE_POSES } from '../src/anim/idlePoses.js';
 import { buildSemAxes } from '../src/anim/semAxes.js';
+import { needBool, needLabel } from './assert-args.mjs';
 
 // 角色站直、面朝 +Z：她的左手边是 +X（VRM 规范）
 const DEFS = [
@@ -85,6 +86,7 @@ function buildRig(alongAxis, twistRad = 0.7) {
 let pass = 0;
 let fail = 0;
 const check = (ok, label, extra = '') => {
+  needBool(ok, 'check()'); needLabel(label, 'check()');
   if (ok) { pass++; console.log(`  ✓ ${label}`); }
   else { fail++; console.log(`  ✗ ${label}  ${extra}`); }
 };

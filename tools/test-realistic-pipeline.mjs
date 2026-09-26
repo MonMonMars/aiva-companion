@@ -19,6 +19,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { needBool, needLabel } from './assert-args.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -101,7 +102,11 @@ for (const name of list) {
   }
 
   const problems = [];
-  const ok = (c, m) => { if (!c) problems.push(m); };
+  const ok = (c, m) => {
+    needBool(c, 'ok(c, m)');
+    needLabel(m, 'ok(c, m)');
+    if (!c) problems.push(m);
+  };
 
   let gltf;
   try {

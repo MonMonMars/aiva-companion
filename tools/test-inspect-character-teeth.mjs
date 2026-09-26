@@ -27,6 +27,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { rmTreeBounded } from './step-runner.mjs';
+import { needBool, needLabel } from './assert-args.mjs';
 
 const ROOT = path.resolve(process.argv[2] || path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
 const SCRIPT = 'tools/inspect-character.mjs';
@@ -35,6 +36,7 @@ const SB = path.join(ROOT, '_teeth_sb_ic');
 
 let fails = 0;
 const check = (cond, msg) => {
+  needBool(cond, 'check()'); needLabel(msg, 'check()');
   console.log(`  ${cond ? '✓' : '✗'} ${msg}`);
   if (!cond) fails++;
 };
@@ -111,10 +113,22 @@ function squashY(srcGlb, dstGlb, scaleY) {
 }
 
 /* ---------------- 沙盒：一次搭好，四个场景共用 ---------------- */
+// ⚠️ 被测脚本从第 30 步起 import 了 ./assert-args.mjs（断言助手的参数守卫）。
+//    沙盒里少这个文件，脚本根本起不来 —— ERR_MODULE_NOT_FOUND，退出码非 0。
+//    ⚠️ 那样**所有「要求红」的场景依然会通过**（模块找不到也是一种红），
+//    只有对照组看得出真相：2026-09-26 就这样把 ⓪ 连同另外 9 项一起弄红了才被发现。
+//    所以复制清单里必须带上依赖，别指望 mu 「被测脚本红了」能替你分辨原因。
+const copyScript = (dstTools) => {
+  fs.mkdirSync(dstTools, { recursive: true });
+  fs.copyFileSync(path.join(ROOT, SCRIPT), path.join(dstTools, path.basename(SCRIPT)));
+  for (const dep of ['assert-args.mjs']) {
+    fs.copyFileSync(path.join(ROOT, 'tools', dep), path.join(dstTools, dep));
+  }
+};
+
 fs.rmSync(SB, { recursive: true, force: true });
-fs.mkdirSync(path.join(SB, 'tools'), { recursive: true });
 fs.mkdirSync(path.join(SB, 'assets', 'models2'), { recursive: true });
-fs.copyFileSync(path.join(ROOT, SCRIPT), path.join(SB, SCRIPT));
+copyScript(path.join(SB, 'tools'));
 const realGlb = path.join(SB, 'assets', 'models2', `${MODEL}.glb`);
 fs.copyFileSync(path.join(ROOT, 'assets', 'models2', `${MODEL}.glb`), realGlb);
 const morphReal = path.join(ROOT, 'assets', 'models2', `${MODEL}.morph.json`);
@@ -151,9 +165,8 @@ try {
   console.log('\n② MODELS 里一个 GLB 都没有（0 个体检项）');
   {
     const empty = path.join(SB, 'empty');
-    fs.mkdirSync(path.join(empty, 'tools'), { recursive: true });
     fs.mkdirSync(path.join(empty, 'assets', 'models2'), { recursive: true });
-    fs.copyFileSync(path.join(SB, SCRIPT), path.join(empty, SCRIPT));
+    copyScript(path.join(empty, 'tools'));
     const r = run(empty);
     const out = String(r.stdout || '');
     check(r.status !== 0, `退出码非 0（实际 ${r.status}）`);
@@ -165,8 +178,7 @@ try {
   console.log('\n③ MODELS 目录不存在');
   {
     const gone = path.join(SB, 'gone');
-    fs.mkdirSync(path.join(gone, 'tools'), { recursive: true });
-    fs.copyFileSync(path.join(SB, SCRIPT), path.join(gone, SCRIPT));
+    copyScript(path.join(gone, 'tools'));
     const r = run(gone);
     const out = String(r.stdout || '') + String(r.stderr || '');
     check(r.status !== 0, `退出码非 0（实际 ${r.status}）`);

@@ -26,6 +26,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { needBool, needLabel } from './assert-args.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(process.argv[2] || path.join(__dirname, '..'));
@@ -177,7 +178,12 @@ const PROBE = `(() => {
 
 let conn;
 let bad = 0;
-const ok = (cond, msg) => { console.log(`${cond ? '✓' : '✗'} ${msg}`); if (!cond) bad++; };
+const ok = (cond, msg) => {
+  needBool(cond, 'ok(cond, msg)');
+  needLabel(msg, 'ok(cond, msg)');
+  console.log(`${cond ? '✓' : '✗'} ${msg}`);
+  if (!cond) bad++;
+};
 
 try {
   let list = null;

@@ -23,6 +23,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { needBool, needLabel } from './assert-args.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -54,14 +55,10 @@ function ok(label, cond, detail = '') {
   //    写法相反。2026-09-26 就在这里栽过：按别处的习惯写成 `ok(cond, label)`，
   //    条件位拿到的是那句标签（非空字符串 = 永真），布尔值被当成标签打出去 ——
   //    输出里出现一行「✓ false」，一条**永远绿**的断言。
-  //    所以这里显式卡死参数类型：传反了当场炸，不许悄悄变成一条空转的断言。
-  if (typeof label !== 'string' || !label) {
-    throw new Error(`ok() 的第一个参数必须是非空字符串（这个文件的签名是 ok(label, cond, detail)，`
-      + `跟别处相反）。实际收到：${JSON.stringify(label)} —— 八成是把参数顺序写反了`);
-  }
-  if (typeof cond !== 'boolean') {
-    throw new Error(`ok() 的第二个参数必须是布尔值。实际收到：${JSON.stringify(cond)} —— 参数顺序写反了？`);
-  }
+  //    守卫提到 tools/assert-args.mjs 里去了（全党 production 共用同一份），
+  //    并由第 30 步盯着「每个断言函数都调了它」。
+  needLabel(label, 'ok(label, cond)');
+  needBool(cond, 'ok(label, cond)');
   if (cond) { pass++; console.log('  ✓', label); }
   else { fail++; console.log('  ✗', label, detail ? '→ ' + detail : ''); }
 }

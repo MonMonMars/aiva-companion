@@ -19,6 +19,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { needBool, needLabel } from './assert-args.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(here, '..');
@@ -312,6 +313,10 @@ console.log(`  颜色数：${result.distinctColors} 种 · 平均饱和度 ${res
 
 let pass = 0, fail = 0;
 const ok = (c, label, detail = '') => {
+  // 守卫的作用：参数顺序写反时条件位拿到非空字符串 = 永真，断言从此永远绿。
+  //   由第 30 步 tools/lint-assert-guards.mjs 盯着「每个断言函数都装了它」。
+  needBool(c, 'ok(c, label)');
+  needLabel(label, 'ok(c, label)');
   if (c) { pass++; console.log(`  ✅ ${label}${detail ? ` — ${detail}` : ''}`); }
   else { fail++; console.log(`  ❌ ${label}${detail ? ` — ${detail}` : ''}`); }
 };

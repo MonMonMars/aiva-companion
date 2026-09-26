@@ -59,14 +59,21 @@
 //   ⓔ espeak 粤语码改回 yue → 红，且要点名 zh-hk                     🔴
 //   ● 第二批九条（withTimeout ×2 / auth-timeout ×2 / net-timeout ×2 /
 //     rig-semantics ×2 / bundle ×1）→ 各自要求红 + 点名              🔴
+//   ● 第三批三条（auth-timeout-ms / dbCall-ms / net-timeout-ms）——
+//     按第二批那两个洞的**形状**回头全仓库扫出来的同类病，详见 CASES 上方。🔴
 //   ⓕ 变异必须真的改到了东西（否则"绿"没被验过）                     🟢
 //   ⓖ 收工前九个源文件必须与原文**逐字节一致**                        🟢
+//
+// ⚠️ 不在注释里写「一共几条」—— 那个数字脱离代码之后没有任何检查会响
+//    （2026-09-26 刚栽过一次：注释写 12/11/1，实际 13/13/0）。
+//    想知道有多少条，看本脚本**收尾打印的那一行**（它是从 CASES 数出来的）。
 
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { runStep, rmTreeBounded } from './step-runner.mjs';
+import { needBool, needLabel } from './assert-args.mjs';
 
 const ROOT = path.resolve(process.argv[2] || path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
 const R = (rel) => path.join(ROOT, rel);
@@ -74,6 +81,7 @@ const sha = (s) => crypto.createHash('sha256').update(s).digest('hex').slice(0, 
 
 let bad = 0;
 const check = (cond, msg) => {
+  needBool(cond, 'check()'); needLabel(msg, 'check()');
   console.log(`  ${cond ? '✓' : '✗'} ${msg}`);
   if (!cond) bad++;
 };
@@ -235,6 +243,53 @@ const CASES = [
     note: '★ 这一条抓到一条**碰运气**的断言：18 个姿势随机抽七八次，连着抽中同一个的'
       + '概率本来就不高 —— 去重拿掉它也照样绿。已把 Math.random 钉成常数',
   },
+  // ───────────────────────────────────────────────────────────────────────
+  // 第三批（同日晚些）：按上面那两个洞的**形状**回头全仓库扫一遍，
+  // 结果发现 auth-timeout / net-timeout 有同一道病。
+  //
+  //   那三句的耗时窗口是 [75,2000) / [110,2000)，而传进去的上限是
+  //   80 / 120ms —— **16~25 倍宽**。变异实测（6 个：authCall / dbCall / netFetch
+  //   各 ×2 ×5）：
+  //     ×2   → 三处**全部整套全绿**（exit 0、0 条 ✗）
+  //     ×5   → authCall / netFetch 虽然红了，但红的是别处那两条自捡
+  //            （等 200ms / cap 3000ms）—— 核心那句「确实等到了上限才放弃」
+  //            **一次都没吭声**；dbCall 最彻底，×5 也全绿。
+  //   所以「(exit非0) 会红吗」的答案是会，但**红错了地方** —— 这跟
+  //   「判据宽到能命中说明文字」是同一类：判据没对准真正要看的那件事。
+  // 修法跟 withTimeout 那次一样：补一条不看墙钟的判据（用记录器盯
+  // 排进计时器的毫秒数）。下面三条就是把「补完之后仍然红」钉住。
+  // ───────────────────────────────────────────────────────────────────────
+  {
+    id: 'auth-timeout-ms',
+    label: 'auth-timeout（authCall 的上限被改写：80ms → 160ms）',
+    step: ['--import', './tools/src-resolve.mjs', 'tools/test-auth-timeout.mjs'],
+    file: 'src/lib/cloudClient.js',
+    mutate: (s) => repOnce(s, "return await withTimeout(fn(), ms, 'auth-timeout');", "return await withTimeout(fn(), ms * 2, 'auth-timeout');"),
+    mustSay: ['authCall 排进计时器'],
+    note: '★ 原断言的耗时窗口是 [75,2000)，对 80ms 是 25 倍宽 —— 这一条原本整套全绿',
+  },
+  {
+    id: 'dbCall-ms',
+    label: 'auth-timeout（dbCall 的上限被改写：120ms → 240ms）',
+    step: ['--import', './tools/src-resolve.mjs', 'tools/test-auth-timeout.mjs'],
+    file: 'src/lib/cloudClient.js',
+    mutate: (s) => repOnce(s, "return await withTimeout(fn(ac.signal), ms, 'db-timeout', () => ac.abort());", "return await withTimeout(fn(ac.signal), ms * 2, 'db-timeout', () => ac.abort());"),
+    mustSay: ['dbCall 排进计时器'],
+    note: '★ 三处里最松的一处：连 ×5 都曾经整套全绿（exit 0、0 条 ✗）',
+  },
+  {
+    id: 'net-timeout-ms',
+    label: 'net-timeout（netFetch 的上限被改写：80ms → 160ms）',
+    step: ['--import', './tools/src-resolve.mjs', 'tools/test-net-timeout.mjs'],
+    file: 'src/lib/netFetch.js',
+    mutate: (s) => repOnce(s, `    return await withTimeout(
+      fetch(url, { ...init, signal: ac.signal }),
+      ms,`, `    return await withTimeout(
+      fetch(url, { ...init, signal: ac.signal }),
+      ms * 2,`),
+    mustSay: ['netFetch 排进计时器'],
+    note: '★ 同 authCall：原窗口 [75,2000) 对 80ms 有 25 倍宽，×2 原本整套全绿',
+  },
   {
     id: 'bundle',
     label: 'bundle（引用一个不存在的模块 —— CI #25 那次事故的形状）',
@@ -315,8 +370,8 @@ try {
     check(sha(fs.readFileSync(abs, 'utf8')) === sha(orig), `${c.id} 跑完立刻还原了源文件`);
   }
 } finally {
-  /* ⓖ 收工核验：四个文件必须与原文逐字节一致 */
-  console.log('\nⓖ 收工核验：九个源文件必须与原文逐字节一致');
+  /* ⓖ 收工核验：源文件必须与原文逐字节一致（几个文件也是数出来的） */
+  console.log(`\nⓖ 收工核验：${ORIGINAL.size} 个源文件必须与原文逐字节一致`);
   for (const [rel, orig] of ORIGINAL) {
     let now = '';
     try { now = fs.readFileSync(R(rel), 'utf8'); } catch { /* 读不到就当不一致 */ }
@@ -334,5 +389,11 @@ try {
   }
 }
 
-console.log(bad ? `\n[assertion-teeth] FAIL — ${bad} 项没达标` : '\n[assertion-teeth] PASS — 九个断言型步骤看见真事故都会红，原样照旧绿，九个源文件已逐字节还原');
+// ★★ 下面的数字全部**从 CASES 数出来**，不写在注释里、也不写死在这行里 ——
+//    写死的数字会跟代码脱节，而且没有任何检查会响（2026-09-26 栽过一次）。
+const STEP_COUNT = new Set(CASES.map((c) => c.step.join(' '))).size;
+console.log(bad
+  ? `\n[assertion-teeth] FAIL — ${bad} 项没达标`
+  : `\n[assertion-teeth] PASS — ${STEP_COUNT} 个被测步骤的 ${CASES.length} 个变异看见真事故都会红，`
+    + `原样照旧绿，${ORIGINAL.size} 个源文件已逐字节还原`);
 process.exit(bad ? 1 : 0);

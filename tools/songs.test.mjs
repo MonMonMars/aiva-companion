@@ -8,6 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { needBool, needLabel } from './assert-args.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tmp = path.join(root, 'tools', '.tmp-songs.mjs');
@@ -16,6 +17,7 @@ const { renderSong, matchSong, SONG_LIST } = await import('file://' + tmp.replac
 
 let fail = 0;
 const ck = (c, l, x = '') => {
+  needBool(c, 'ck()'); needLabel(l, 'ck()');
   console.log(`${c ? '  ✓' : '  ✗'} ${l}${x ? '  ' + x : ''}`);
   if (!c) fail++;
 };
