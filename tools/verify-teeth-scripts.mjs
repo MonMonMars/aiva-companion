@@ -46,11 +46,20 @@ const rootArg = process.argv.slice(2).find((a) => !a.startsWith('--'));
 const ROOT = path.resolve(rootArg || path.join(HERE, '..'));
 
 let bad = 0;
+// 失败项留一份，结尾再重述一遍。
+//   ⚠️ 为什么必须重述：CI 只保留这一步输出的**末 40 行**（runtests 的 TAIL），
+//     而这里一跑就是十几个脚本、几十行 —— 那个唯一的 ✗ 往往在中间，
+//     被截掉之后 CI 上只剩「FAIL — 1 项没达标」，**看不出是哪一项**。
+//     #66 就是这么白的：日志里能看见「1 项没达标」，看不见那一项。
+const failed = [];
 const check = (cond, msg) => {
   needBool(cond, 'check()');
   needLabel(msg, 'check()');
   console.log(`  ${cond ? '✓' : '✗'} ${msg}`);
-  if (!cond) bad++;
+  if (!cond) {
+    bad++;
+    failed.push(msg);
+  }
 };
 
 // ---- 场景结论标记 ---------------------------------------------------------
@@ -117,7 +126,9 @@ try {
   rows = await askRegistry(ROOT);
 } catch (e) {
   check(false, `问得到登记表（${e.message.split('\n')[0]}）`);
-  console.log(bad ? `\n[teeth-scripts] FAIL — ${bad} 项没达标` : '');
+  console.log(`\n  ===== 没达标的 ${bad} 项（重述，免得被日志截断吃掉）=====`);
+  for (const m of failed) console.log(`  ✗ ${m}`);
+  console.log(`\n[teeth-scripts] FAIL — ${bad} 项没达标`);
   process.exit(1);
 }
 const teeth = teethScripts(rows);
@@ -177,5 +188,10 @@ for (const t of teeth) {
 }
 
 console.log(`\n  牙齿脚本合计跑了 ${Math.round(totalMs / 1000)}s（这一步是**真的**把它们挨个跑了一遍，不是读代码猜的）`);
+if (bad) {
+  // ↑ 见 failed 那条的注释：CI 只看得到末 40 行，所以红项必须在结尾再打一次。
+  console.log(`\n  ===== 没达标的 ${bad} 项（重述一遍，免得被日志截断吃掉）=====`);
+  for (const m of failed) console.log(`  ✗ ${m}`);
+}
 console.log(bad ? `\n[teeth-scripts] FAIL — ${bad} 项没达标` : '\n[teeth-scripts] PASS — 每个自称牙齿的脚本都真的验到了东西，且跑完没留下痕迹');
 process.exit(bad ? 1 : 0);
