@@ -25,6 +25,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { findDist, distCandidates } from './lib/find-dist.mjs';
 
 const ROOT = path.resolve(process.argv[2] || '.');
 const argv = process.argv.slice(3);
@@ -36,15 +37,12 @@ const dirArg = argv.includes('--dir') ? argv[argv.indexOf('--dir') + 1] : null;
 //    「能打包」≠「能跑起来」≠「线上能跑起来」，这是第三层。
 const liveUrl = argv.includes('--url') ? argv[argv.indexOf('--url') + 1] : null;
 
-// 优先用刚打出来的那份；没有就退回 npm run export:web 的 dist
-const CANDIDATES = [dirArg, 'dist-localcheck-web', 'dist'].filter(Boolean);
-const DIST = liveUrl ? null : CANDIDATES.map((d) => path.resolve(ROOT, d)).find((d) => {
-  try {
-    return fs.statSync(d).isDirectory() && fs.existsSync(path.join(d, 'index.html'));
-  } catch {
-    return false;
-  }
-});
+// 优先用刚打出来的那份；没有就退回 npm run export:web 的 dist。
+//   ⚠️ 判据统一放在 tools/lib/find-dist.mjs —— 第 17 步和它的牙齿必须挑**同一份**，
+//     各写一份迟早飘开（2026-09-27 实测：牙齿只认一个目录、还不查 index.html，
+//     结果环境里只有 dist/ 时它什么都不验还报绿）。
+const CANDIDATES = distCandidates(dirArg);
+const DIST = liveUrl ? null : findDist(ROOT, dirArg);
 
 if (liveUrl) {
   // ⚠️ 这句话必须打出来：线上模式验的是**已经部署上去的那份**，不是你本地刚改的

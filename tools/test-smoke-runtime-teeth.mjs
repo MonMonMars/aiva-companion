@@ -26,9 +26,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { findDist, distCandidates } from './lib/find-dist.mjs';
 
 const ROOT = path.resolve(process.argv[2] || '.');
-const DIST = path.join(ROOT, 'dist-localcheck-web');
+// ⚠️ 产物目录**必须和第 17 步挑同一份**（tools/lib/find-dist.mjs，三选一 + 查 index.html）。
+//   以前这里写死 `dist-localcheck-web` 一个、连 index.html 都不查，于是环境里
+//   只有 dist/ 的时候：第 17 步照常在 dist/ 上做实验，而它的牙齿打印「跳过」
+//   然后 exit 0 —— 什么都不验还报绿。2026-09-27 第 34 步实测抓到的就是这个。
+const argv = process.argv.slice(3);
+const dirArg = argv.includes('--dir') ? argv[argv.indexOf('--dir') + 1] : null;
+const DIST = findDist(ROOT, dirArg);
 
 function walk(dir, predicate, out = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -41,11 +48,16 @@ function walk(dir, predicate, out = []) {
 const glbs = () => walk(DIST, (f) => f.endsWith('.glb'));
 const offs = () => walk(DIST, (f) => f.endsWith('.glb.off'));
 
-// 产物是第 16 步留下的；--fast 跳过打包时这里就没有，那就明说跳过了 ——
-// 不打招呼地 exit 0 等于假装通过。
-if (!fs.existsSync(DIST)) {
-  console.log('⚠️ 跳过：没有 dist-localcheck-web（多半是用了 --fast，没打包）。这一步需要产物才能做实验。');
-  process.exit(0);
+// 找不到产物就**红**，不许跳过。
+//   早先这里是「⚠️ 跳过…process.exit(0)」，理由是「--fast 跳过打包时没有产物」。
+//   但牙齿脚本跳过的代价是：全套照绿，而这一步其实什么都没验 ——
+//   比不跑更糟，因为它给了「验过了」的错觉。第 34 步（verify-teeth-scripts）
+//   就是专门来抓「什么都不验还报绿」的，这里必须和它保持一致。
+if (!DIST) {
+  console.log('✗ 找不到可跑的产物，试过：\n  ' + distCandidates(dirArg).join('\n  '));
+  console.log('  先跑 npm run export:web，或者先跑第 16 步（node tools/verify-bundle.mjs . --keep）。');
+  console.log('  这里**不能**退回「跳过并 exit 0」—— 跳过的牙齿等于没牙齿。');
+  process.exit(1);
 }
 
 // 先兜底还原：上次要是中途被杀（比如收尾那 25 秒等超时被人打断），
