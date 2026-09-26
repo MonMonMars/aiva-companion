@@ -64,7 +64,7 @@ jobs:
               #    起得慢、这一步随时可能随机变红（CI #41 就是这么红的：16 秒上限
               #    被空等满）。而它恰恰只在**绿**的那次才值得看 —— 红了的话
               #    下面 else 分支会把末 40 行整段打出来，不缺这一句。
-              #    只留 6 行，免得 28 步把日志撑爆。
+              #    只留 6 行，免得 29 步把日志撑爆。
               echo "----- $name 的输出（末 6 行）-----"
               tail -6 /tmp/step.log
               echo "| $name | ✅ |" >> $GITHUB_STEP_SUMMARY
@@ -178,6 +178,17 @@ jobs:
           # 本步验的就是「漏了真的会拒绝开跑」：在沙盒副本上加一步、改坏登记，
           # 再要求退出码非 0；原样的对照组必须照旧放行。
           run "step-registry-teeth" node tools/test-step-registry-teeth.mjs .
+          # 第 29 步盯的是**欠账单本身**：第 28 步把「19 步只靠理由、没有常驻牙齿」
+          # 摆到屏幕上之后，那 9 条 `why` 里写的「断言写坏会红」是**我没验过的判断**。
+          # 本步用变异把它们证掉 —— 结果三个判断里两个被证伪：
+          #   tts / nativeSpeech 清空情绪表 → 真的会红（我的判断是对的）；
+          #   songs 清空曲库 → 「曲库 0 首」，WAV 那批实质判据整批被跳过，
+          #     靠 matchSong 抛 TypeError 才退出非 0 —— 洞，已补 0 条闸门。
+          # 「靠崩溃才红」是 fragile 的（给 matchSong 加个空表兜底就静默全绿了），
+          # 所以额外要求 songs 的失败必须是一条 ✗，输出里不许出现 TypeError。
+          # ⚠️ 它会临时改真实源文件再还原（三重保险 + 收工比对 sha256），
+          #    放在这一步之后、Summary 之前。
+          run "assertion-teeth" node tools/test-assertion-teeth.mjs .
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
           exit $fails

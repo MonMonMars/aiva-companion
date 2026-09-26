@@ -66,16 +66,16 @@ REG.push('net-timeout', ['--import', './tools/src-resolve.mjs', 'tools/test-net-
   why: '与 withTimeout 同族：断言真的超时路径；未验证',
 });
 REG.push('nativeSpeech', ['tools/nativeSpeech.test.mjs'], {
-  why: '断言 nativeSpeech 模块的真实行为；未验证（没有做过变异测试）',
+  guardedBy: ['assertion-teeth'],
 });
 REG.push('espeak', ['tools/espeak.test.mjs'], {
-  why: '断言 espeak 模块的真实行为；未验证',
+  guardedBy: ['assertion-teeth'],
 });
 REG.push('tts', ['tools/tts.test.mjs'], {
-  why: '断言 tts 模块的真实行为；未验证',
+  guardedBy: ['assertion-teeth'],
 });
 REG.push('songs', ['tools/songs.test.mjs'], {
-  why: '断言曲库数据的真实内容（不是"扫到几个文件"）；未验证',
+  guardedBy: ['assertion-teeth'],
 });
 REG.push('pipeline', ['tools/pipeline.test.mjs'], {
   // 只覆盖它里面的**口型**那两条断言 —— 其余部分仍是没有牙齿的
@@ -234,6 +234,20 @@ REG.push('step-timeout-teeth', ['tools/test-step-timeout-teeth.mjs', '.'], {
 // 它自己的牙齿（变异测试）见 tools/test-step-registry-teeth.mjs 顶部的场景表。
 REG.push('step-registry-teeth', ['tools/test-step-registry-teeth.mjs', '.'], {
   why: '它自己是牙齿脚本 —— 牙齿的牙齿到此为止（再往上就是无限递归）。本轮做过变异测试（8 个场景全杀，见脚本顶部），但那是当时的证据，没有常驻的再上一层；未验证',
+});
+// 第 29 步盯的是**欠账单上那 9 个「只靠 why」的步骤里的一批**（nativeSpeech /
+// espeak / tts / songs）。起因是第 28 步把那份欠账单摆到屏幕上之后，我得承认
+// 那 9 条 `why` 里写的「它断言的是真实行为，断言写坏会红」是**我自己没验过的判断**。
+// 本步用变异把它们证掉 —— 结果三个判断里**两个被证伪**：
+//   tts 清空情绪表 → 13 项 ✗；nativeSpeech 清空映射 → 5 项 ✗（这两条我的判断是对的）；
+//   songs 清空曲库 → 打一行「曲库 0 首」，WAV 那批实质判据**整批被跳过**，
+//     靠 matchSong 抛 TypeError 才退出非 0 —— **洞，已补 0 条闸门**。
+// 「靠崩溃才红」是 fragile 的：哪天有人给 matchSong 加个空表兜底（很常见的
+// "健壮性"改法），静默全绿立刻就回来了。所以本步额外要求 songs 的失败必须是
+// 一条 ✗，输出里**不许出现 TypeError**。
+// 它自己的牙齿（变异测试）见 README：7 个变异体，含「把刚补的那条闸门还原掉」。
+REG.push('assertion-teeth', ['tools/test-assertion-teeth.mjs', '.'], {
+  why: '它自己是牙齿脚本 —— 牙齿的牙齿到此为止。本轮做过变异测试（7 个全杀），但那是当时的证据，没有常驻的再上一层；未验证',
 });
 
 // ---------------------------------------------------------------------------

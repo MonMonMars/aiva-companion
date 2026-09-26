@@ -22,6 +22,15 @@ const ck = (c, l, x = '') => {
 
 console.log(`曲库 ${SONG_LIST.length} 首：${SONG_LIST.join(' / ')}\n`);
 
+// ★★ 0 条闸门：曲库空了的话下面那个循环**一次都不跑**，`fail` 一直保持 0，
+//    脚本照样打印「全部通过」。实测过（2026-09-26）：把 SONG_LIST 改成 [] 之后，
+//    这里打一行「曲库 0 首：」然后一路走到模糊匹配，最后**靠 matchSong 返回
+//    undefined 抛 TypeError 才退出非 0** —— 而那跟"歌有没有声音"毫无关系。
+//    也就是说：WAV 头 / 峰值 / 有声占比这三条实质判据被**整批跳过**了。
+//    靠崩溃才红是 fragile 的：哪天有人给 matchSong 加个空表兜底（很常见的
+//    "健壮性"改法），这里立刻变成静默全绿。所以显式卡死。
+ck(SONG_LIST.length > 0, `曲库非空（${SONG_LIST.length} 首）`, '空曲库会让下面每一条 WAV 判据都被跳过；这条自己必须是失败而不是崩溃');
+
 for (const name of SONG_LIST) {
   const song = matchSong(name);
   const uri = renderSong(song);
@@ -65,8 +74,11 @@ for (const [q, want] of matchCases) {
   const got = matchSong(q).title;
   ck(got === want, `「${q}」→ ${got}`, got === want ? '' : `应为 ${want}`);
 }
-const rnd = matchSong('随便来一首').title;
-ck(!!rnd, `说不出歌名时随机给一首 → ${rnd}`);
+// 不写 `.title` 直接链式取属性 —— 曲库为空时 matchSong 返回 undefined，
+// 这里是**崩溃**而不是一条 ✗（崩溃也能让退出码非 0，但那是在掩盖上面那条闸门
+// 已经失守的事实，而且堆栈里看不出到底哪条判据没跑到）。
+const rnd = matchSong('随便来一首')?.title;
+ck(!!rnd, `说不出歌名时随机给一首 → ${rnd ?? '(空)'}`, '曲库为空时这里也必须是一条失败，不是崩溃');
 
 fs.unlinkSync(tmp);
 console.log(fail === 0 ? '\n全部通过 ✓' : `\n失败 ${fail} 项 ✗`);
