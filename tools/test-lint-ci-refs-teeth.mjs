@@ -21,7 +21,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { rmTreeBounded } from './step-runner.mjs';
+import { rmTreeBounded, rmTreeSyncBounded } from './step-runner.mjs';
 
 const ROOT = path.resolve(process.argv[2] || '.');
 const NODE = process.execPath;
@@ -41,7 +41,7 @@ if (!fs.existsSync(LINT)) {
 const FILE_RE = /(?:^|\s)(?:\.\/)?((?:tools|scripts)\/[A-Za-z0-9_.-]+\.[A-Za-z0-9]+)/g;
 
 function buildSandbox() {
-  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  rmTreeSyncBounded(SANDBOX);
   const swf = path.join(SANDBOX, '.github', 'workflows');
   fs.mkdirSync(swf, { recursive: true });
 

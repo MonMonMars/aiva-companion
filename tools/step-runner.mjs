@@ -21,6 +21,7 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import path from 'node:path';
 
 // 10 分钟。刻意给得宽 —— 这一步防的是「挂死」，不是「慢」；
 // 定太紧会把正常的慢步骤（真 Metro 打包、真浏览器 boot）也掐了，那就变成误报。
@@ -122,6 +123,40 @@ export async function rmTreeBounded(abs, opts = {}) {
     gone = true; // existsSync 自己都抛错，多半是路径没了
   }
   return { gone, timedOut: !!r.timedOut, ms: r.ms };
+}
+
+// 同一个东西的**同步**版本：给改不成 async 的调用点用。
+// ---------------------------------------------------------------------------
+// 为什么还要一个同步的：rmTreeBounded 是 async，而十几个牙齿脚本的
+//   `buildSandbox()` 是同步的、还在循环里被调；把它们全改成 await 是一大片改动，
+//   改错一个就是新的假红。而这里真正要防的只有一件事 —— **不返回**。
+//   spawnSync 自带 timeout，到点它一定回来（下面有实测）。
+//
+// ⚠️ 它仍然**阻塞**当前进程（spawnSync 就是同步等），但那是可以接受的：
+//    阻塞最多 timeoutMs，然后返回；而 fs.rmSync(recursive) 是**无限期**地不返回，
+//    而且因为它堵着事件循环，连外面那层 10 分钟的 runStep 定时器都救不回来。
+//
+// ★ 实测（2026-09-27，tools/_probe-rmsync.mjs）：
+//    12 轮「建 41 个文件 → 删」里有 1 轮卡住 —— 目录**已经删掉了**，
+//    但调用不返回（超过 8 秒被掐）。1/12 的概率，正好解释了为什么
+//    这些脚本平时是绿的、隔一阵才挂一次。
+export function rmTreeSyncBounded(abs, opts = {}) {
+  const timeoutMs = opts.timeoutMs || 10000;
+  const target = path.resolve(abs);
+  const script = `require('fs').rmSync(${JSON.stringify(target)}, { recursive: true, force: true })`;
+  const t0 = Date.now();
+  const r = spawnSync(process.execPath, ['-e', script], {
+    timeout: timeoutMs,
+    killSignal: 'SIGKILL', // 卡住的那个进程不值得等它体面退出
+    encoding: 'utf8',
+  });
+  let gone = false;
+  try {
+    gone = !fs.existsSync(target);
+  } catch {
+    gone = true;
+  }
+  return { gone, timedOut: r.status === null, ms: Date.now() - t0 };
 }
 
 // 判断某个 pid 还活着吗（给牙齿测试用：掐完之后得确认它真的没了）。

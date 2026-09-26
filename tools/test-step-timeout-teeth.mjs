@@ -14,7 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runStep, pidAlive } from './step-runner.mjs';
+import { runStep, pidAlive, rmTreeSyncBounded } from './step-runner.mjs';
 import { needBool, needLabel } from './assert-args.mjs';
 
 // ⚠️ 用 fileURLToPath 而不是 new URL(...).pathname：后者在 Windows 上会给出
@@ -38,7 +38,7 @@ function fixture(rel, code) {
   return p;
 }
 
-fs.rmSync(SB, { recursive: true, force: true });
+rmTreeSyncBounded(SB);
 fs.mkdirSync(SB, { recursive: true });
 
 const HB = path.join(SB, 'heartbeat.txt');

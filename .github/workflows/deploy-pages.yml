@@ -234,10 +234,33 @@ jobs:
           #   ⚠️ 它把 13 个牙齿脚本又跑了一遍，约 3 分钟 —— 这是有意的，
           #      「读代码判断它有没有牙齿」判不了。
           run "teeth-scripts" node tools/verify-teeth-scripts.mjs .
-          # 第 35 步是第 34 步的牙齿：沙盒里把登记表裁到只剩夹具，10 个场景
-          # （6 个变异 + 2 个反向对照 + 2 个正向对照）逐条确认那六条判据都还活着，
-          # 其中一条故意演示「拿掉判据②之后空转脚本会被判绿」—— 证明它是承重的。
+          # 第 35 步是第 34 步的牙齿：沙盒里把登记表裁到只剩夹具，11 个场景
+          # （6 个变异 + 2 个反向对照 + 2 个正向对照 + 1 个产物目录）逐条确认
+          # 那些判据都还活着，其中一条故意演示「拿掉判据②之后空转脚本会被判绿」
+          # —— 证明它是承重的。
           run "teeth-scripts-teeth" node tools/test-verify-teeth-scripts-teeth.mjs .
+          # 第 36 步：平台专属的系统命令必须包在 process.platform 分支里。
+          #   CI #65 那次就是这么红的：第 35 步删沙盒写了 Windows 专属命令，
+          #   ubuntu runner 上它不存在 → 沙盒没删 → 收工核验红。
+          #   本机是 Windows，这类 bug 本地永远看不出来，只有 CI 能发现 ——
+          #   所以这道闸必须**在 CI 上也跑**，本地跑它只是提前发现。
+          #   ⚠️ 判的是「有没有平台守卫」不是「见命令就红」：step-runner 里的
+          #      taskkill 是 Windows 专属，但有 Linux 兜底，那是唯一正确的写法。
+          run "platform-cmds" node tools/lint-platform-cmds.mjs .
+          # 第 37 步是第 36 步的牙齿：沙盒里 8 个场景（含 3 个反向/对照）确认
+          # 它红该红的、绿该绿的，其中「同一个 cmd 但包在平台分支里」那条
+          # 对照组专门防「见命令就红」的检查混过去。
+          run "platform-cmds-teeth" node tools/test-lint-platform-cmds-teeth.mjs .
+          # 第 38 步：CI 里会跑的脚本，不许在主进程直接 fs.rmSync(..., {recursive:true})
+          #   删目录。它**偶尔不返回**（实测 12 轮 1 轮），而且是同步的 ——
+          #   卡住时事件循环被堵死，外面 10 分钟的超时也救不回来，整套就没有结论。
+          #   2026-09-27 第 37 步就是这么连挂两次的。
+          #   范围刻意只到「登记过的脚本」：一次性探针不进 CI，挂了只浪费我自己的时间。
+          run "rm-sync" node tools/lint-rm-sync.mjs .
+          # 第 39 步是第 38 步的牙齿：沙盒里 6 个场景（含 3 个反向/对照）确认它
+          #   红该红的、绿该绿的。③「扫描器退化」那条最关键 —— 迁移完之后仓库里
+          #   一处违规都不剩，没有内置金丝雀，检查坏了会静默全绿。
+          run "rm-sync-teeth" node tools/test-lint-rm-sync-teeth.mjs .
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
           exit $fails

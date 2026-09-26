@@ -17,7 +17,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { rmTreeBounded } from './step-runner.mjs';
+import { rmTreeBounded, rmTreeSyncBounded } from './step-runner.mjs';
 import { needBool, needLabel } from './assert-args.mjs';
 
 const ROOT = path.resolve(process.argv[2] || path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
@@ -32,7 +32,7 @@ const check = (cond, msg) => {
   if (!cond) fails++;
 };
 
-fs.rmSync(SB, { recursive: true, force: true });   // 第 61 条：先删干净，旧证据会冒充新证据
+rmTreeSyncBounded(SB);   // 第 61 条：先删干净，旧证据会冒充新证据
 
 /** 造一份沙盒仓库，把 theme.js 按 mutator 改过再落盘；返回沙盒根目录 */
 function sandbox(mutator) {

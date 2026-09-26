@@ -26,7 +26,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { rmTreeBounded } from './step-runner.mjs';
+import { rmTreeBounded, rmTreeSyncBounded } from './step-runner.mjs';
 import { needBool, needLabel } from './assert-args.mjs';
 
 const ROOT = path.resolve(process.argv[2] || path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
@@ -126,7 +126,7 @@ const copyScript = (dstTools) => {
   }
 };
 
-fs.rmSync(SB, { recursive: true, force: true });
+rmTreeSyncBounded(SB);
 fs.mkdirSync(path.join(SB, 'assets', 'models2'), { recursive: true });
 copyScript(path.join(SB, 'tools'));
 const realGlb = path.join(SB, 'assets', 'models2', `${MODEL}.glb`);

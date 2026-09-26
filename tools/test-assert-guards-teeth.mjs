@@ -32,7 +32,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { runStep, rmTreeBounded } from './step-runner.mjs';
+import { runStep, rmTreeBounded, rmTreeSyncBounded } from './step-runner.mjs';
 import { needBool, needLabel } from './assert-args.mjs';
 
 // ⚠️ 用 fileURLToPath，不用 new URL(...).pathname：后者在 Windows 上给出
@@ -63,7 +63,7 @@ const sha = (abs) => crypto.createHash('sha256').update(fs.readFileSync(abs)).di
 const realSubjects = () => [LINT, GUARD, ...SUBJECTS].map((n) => path.join(ROOT, 'tools', n));
 
 function buildSandbox(extra = []) {
-  fs.rmSync(SB, { recursive: true, force: true });
+  rmTreeSyncBounded(SB);
   fs.mkdirSync(SB_TOOLS, { recursive: true });
   for (const n of [LINT, GUARD, ...SUBJECTS]) {
     fs.copyFileSync(path.join(ROOT, 'tools', n), path.join(SB_TOOLS, n));

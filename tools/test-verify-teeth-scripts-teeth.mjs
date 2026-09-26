@@ -28,7 +28,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { runStep, rmTreeBounded } from './step-runner.mjs';
+import { runStep, rmTreeBounded, rmTreeSyncBounded } from './step-runner.mjs';
 import { needBool, needLabel } from './assert-args.mjs';
 
 const ROOT = path.resolve(process.argv[2] || '.');
@@ -92,7 +92,7 @@ const FIXTURE_GUARDED = `console.log('被盯着的那个步骤本体（第 34 �
 `;
 
 function buildSandbox() {
-  fs.rmSync(SB, { recursive: true, force: true });
+  rmTreeSyncBounded(SB);
   fs.mkdirSync(path.join(SB, 'tools', 'lib'), { recursive: true });
   for (const f of COPIES) {
     fs.copyFileSync(path.join(ROOT, f), path.join(SB, f));

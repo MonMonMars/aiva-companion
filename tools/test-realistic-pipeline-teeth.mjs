@@ -18,7 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { rmTreeBounded } from './step-runner.mjs';
+import { rmTreeBounded, rmTreeSyncBounded } from './step-runner.mjs';
 import { needBool, needLabel } from './assert-args.mjs';
 
 const ROOT = path.resolve(process.argv[2] || path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
@@ -50,7 +50,7 @@ function copyDir(from, to) {
 let sbReady = false;
 function makeSandbox(models) {
   if (!sbReady) {
-    fs.rmSync(SB, { recursive: true, force: true });
+    rmTreeSyncBounded(SB);
     fs.mkdirSync(path.join(SB, 'tools'), { recursive: true });
     fs.mkdirSync(path.join(SB, 'assets', 'models2'), { recursive: true });
     fs.copyFileSync(path.join(ROOT, SCRIPT), path.join(SB, SCRIPT));
@@ -66,7 +66,7 @@ function makeSandbox(models) {
   }
   // models2 归零再按需填 —— 不碰 src/tools
   const dir = path.join(SB, 'assets', 'models2');
-  if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+  if (fs.existsSync(dir)) rmTreeSyncBounded(dir);
   fs.mkdirSync(dir, { recursive: true });
   for (const m of models) {
     fs.copyFileSync(path.join(ROOT, 'assets', 'models2', m), path.join(dir, m));
@@ -138,7 +138,7 @@ try {
   console.log('\n③ assets/models2 目录不存在');
   {
     makeSandbox([]);
-    fs.rmSync(path.join(SB, 'assets', 'models2'), { recursive: true, force: true });
+    rmTreeSyncBounded(path.join(SB, 'assets', 'models2'));
     const r = await runChild(SB, []);
     const out = String(r.stdout || '') + String(r.stderr || '');
     check(r.status !== 0, `退出码非 0（实际 ${r.status}）`);

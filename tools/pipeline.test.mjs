@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import jpeg from 'jpeg-js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { needBool, needLabel } from './assert-args.mjs';
+import { rmTreeSyncBounded } from './step-runner.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const modelsDir = path.join(root, 'assets', 'models');
@@ -430,6 +431,6 @@ for (const id of ['girlfriend', 'boyfriend', 'secretary']) {
   console.log(`  体积：rigged.glb ${kb(glb.length)} + jpg ${kb(jpg.length)} + morph ${kb(morphJson ? fs.statSync(path.join(modelsDir, `${id}.morph.json`)).size : 0)}`);
 }
 
-fs.rmSync(tmpDir, { recursive: true, force: true });
+rmTreeSyncBounded(tmpDir);
 console.log(failed === 0 ? '\n全部通过 ✓' : `\n失败 ${failed} 项 ✗`);
 process.exit(failed === 0 ? 0 : 1);

@@ -18,7 +18,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { rmTreeBounded } from './step-runner.mjs';
+import { rmTreeBounded, rmTreeSyncBounded } from './step-runner.mjs';
 import { needBool, needLabel } from './assert-args.mjs';
 
 const ROOT = path.resolve(process.argv[2] || path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
@@ -38,7 +38,7 @@ const run = (script, args, cwd) => {
 };
 
 // ---------- 0. 沙盒准备：先删干净（SKILL 第 61 条：旧证据会冒充新证据） ----------
-fs.rmSync(SB, { recursive: true, force: true });
+rmTreeSyncBounded(SB);
 fs.mkdirSync(path.join(SB, 'src', 'anim'), { recursive: true });
 fs.mkdirSync(path.join(SB, 'tools'), { recursive: true });
 fs.mkdirSync(path.join(SB, '只放非源码文件'), { recursive: true });

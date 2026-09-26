@@ -27,6 +27,7 @@
 import { spawnSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { rmTreeSyncBounded } from './step-runner.mjs';
 
 const ROOT = path.resolve(process.argv[2] || '.');
 
@@ -67,7 +68,7 @@ for (const plat of PLATFORMS) {
   // 先清掉上一次的，免得旧产物混进来让失败伪装成成功
   //   ⚠️ 这一行**只删自己那份**（dirName），用 --out 指到别处就碰不到默认目录 ——
   //     上面那次事故的根源就是「打包失败时这一行已经执行了，而重建它的那一步没成功」。
-  fs.rmSync(out, { recursive: true, force: true });
+  rmTreeSyncBounded(out);
 
   const t0 = Date.now();
   const r = spawnSync(
@@ -97,7 +98,7 @@ for (const plat of PLATFORMS) {
 
   summary.push({ plat, ok: true, modules, dt });
   console.log(`v [${plat}] ${modules ?? '?'} modules（${dt}ms）`);
-  if (!KEEP) fs.rmSync(out, { recursive: true, force: true });
+  if (!KEEP) rmTreeSyncBounded(out);
 }
 
 const line = summary.map((s) => `${s.plat}=${s.ok ? `${s.modules}modules` : 'FAIL'}`).join('  ');
