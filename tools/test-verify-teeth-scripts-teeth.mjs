@@ -27,7 +27,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { runStep } from './step-runner.mjs';
+import { runStep, rmTreeBounded } from './step-runner.mjs';
 import { needBool, needLabel } from './assert-args.mjs';
 
 const ROOT = path.resolve(process.argv[2] || '.');
@@ -260,10 +260,16 @@ const rootClean = rootStatusAfter === rootStatusBefore;
 console.log(`    ${rootClean ? '✓' : '✗'} 真仓库状态没变${rootClean ? '' : `（\n${rootStatusAfter}）`}`);
 if (!rootClean) bad++;
 
-const rm = spawnSync('cmd', ['/c', 'rmdir', '/s', '/q', SB], { encoding: 'utf8' });
-const gone = !fs.existsSync(SB);
-console.log(`    ${gone ? '✓' : '✗'} 沙盒已删除${gone ? '' : `（rmdir exit=${rm.status} ${rm.stderr || ''}）`}`);
-if (!gone) bad++;
+// ⚠️ 这里**不能**写 `spawnSync('cmd', ['/c','rmdir',...])` —— 那是 Windows 专属，
+//    CI 是 ubuntu runner，`cmd` 根本不存在，沙盒删不掉 → 收工核验判红。
+//    本地（Windows）完全看不出来，只有 CI 会红 —— #65 就是这么红的。
+//    用 step-runner 里那个跨平台且有硬上限的 rmTreeBounded（fs.rmSync 在这台
+//    机器上会卡住不返回，所以必须丢给子进程 + 带上限）。
+const rm = await rmTreeBounded(SB, { timeoutMs: 20000 });
+console.log(
+  `    ${rm.gone ? '✓' : '✗'} 沙盒已删除${rm.gone ? '' : `（${rm.timedOut ? '清理超时，进程已杀' : '未知原因'}）`}`
+);
+if (!rm.gone) bad++;
 
 console.log(bad ? `\n❌ ${bad} 个场景不合预期` : `\n✅ ${scenarios.length} 个场景全部合预期`);
 process.exit(bad ? 1 : 0);

@@ -156,7 +156,10 @@ for (const t of teeth) {
   }
 
   const before = gitStatus(ROOT);
-  const r = await runStep([t.script, ROOT], { cwd: ROOT, timeoutMs: 180000 });
+  // 超时给到 10 分钟：本机最快的脚本 2s、最慢的 assertion-teeth 48s，
+  //   但 CI 的机器明显更慢，给 3 分钟的话「慢」会被误判成「坏」。
+  //   整个第 34 步外面还有一层 DEFAULT_TIMEOUT_MS（也是 10 分钟）兜着。
+  const r = await runStep([t.script, ROOT], { cwd: ROOT, timeoutMs: 600000 });
   totalMs += r.ms;
   const after = gitStatus(ROOT);
   const out = `${r.stdout}\n${r.stderr}`;
