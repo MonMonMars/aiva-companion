@@ -118,6 +118,16 @@ STEPS.push(['zero-scan-teeth', ['tools/test-lint-zero-scan-teeth.mjs', '.']]);
 // 任何事：一个无脑报错的检查也能通过只验红的那半边。
 // 自己的牙齿也验过（变异测试）：把三条规则分别改成不生效，这里立刻红。
 STEPS.push(['lint-rules-teeth', ['tools/test-lint-rules-teeth.mjs', '.']]);
+// 第 24 步轮到 check-persona-coverage（本地第 1 步）**规则本身**的牙齿。
+// 前面两步的顺序是这样补下来的：
+//   第 22 步 —— 收集环节坏掉会响（扫不到东西时别静默绿）；
+//   第 23 步 —— 那三条 lint 看见真违规会红、看见正确写法会绿；
+//   第 24 步 —— 角色核对那张报表里每一项（tagline / bgId 指向存在的背景 /
+//                idlePose 指向 tag:'idle' 的姿势 / 签名姿势不许重复 / 自检不许假通过）
+//                **缺一项就得有一个 ✗**。
+// 同样每个场景配对照组（原样必须绿），同样跑过变异测试：把这五条分别改成不生效，
+// 这一步立刻红。没有它，谁把 `row.tagline` 改成恒 true，报表照样「有缺口 0 个」。
+STEPS.push(['persona-coverage-teeth', ['tools/test-persona-coverage-teeth.mjs', '.']]);
 
 const TAIL = 40;
 let fails = 0;

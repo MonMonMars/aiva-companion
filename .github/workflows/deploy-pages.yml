@@ -64,7 +64,7 @@ jobs:
               #    起得慢、这一步随时可能随机变红（CI #41 就是这么红的：16 秒上限
               #    被空等满）。而它恰恰只在**绿**的那次才值得看 —— 红了的话
               #    下面 else 分支会把末 40 行整段打出来，不缺这一句。
-              #    只留 6 行，免得 23 步把日志撑爆。
+              #    只留 6 行，免得 24 步把日志撑爆。
               echo "----- $name 的输出（末 6 行）-----"
               tail -6 /tmp/step.log
               echo "| $name | ✅ |" >> $GITHUB_STEP_SUMMARY
@@ -147,6 +147,10 @@ jobs:
           # （沙盒里造一处真违规），每条都配「正确写法要绿」的对照组 ——
           # 少了对照组，无脑报错的检查也能混过去。
           run "lint-rules-teeth" node tools/test-lint-rules-teeth.mjs .
+          # 同上，轮到角色核对（本地第 1 步）那张报表本身：tagline / bgId / idlePose /
+          # 签名姿势重复 / 自检 —— 沙盒里缺一样，报表就得有一个 ✗ 且退出非 0，
+          # 原样则必须绿。这批规则改松之后没人会发现，就是因为以前没有这一步。
+          run "persona-coverage-teeth" node tools/test-persona-coverage-teeth.mjs .
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
           exit $fails
