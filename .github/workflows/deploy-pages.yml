@@ -64,7 +64,7 @@ jobs:
               #    起得慢、这一步随时可能随机变红（CI #41 就是这么红的：16 秒上限
               #    被空等满）。而它恰恰只在**绿**的那次才值得看 —— 红了的话
               #    下面 else 分支会把末 40 行整段打出来，不缺这一句。
-              #    只留 6 行，免得 27 步把日志撑爆。
+              #    只留 6 行，免得 28 步把日志撑爆。
               echo "----- $name 的输出（末 6 行）-----"
               tail -6 /tmp/step.log
               echo "| $name | ✅ |" >> $GITHUB_STEP_SUMMARY
@@ -169,6 +169,15 @@ jobs:
           # 「挂住」既不是成功也不是失败，是永远没有结论。现在每一步都有上限，
           # 超时按失败算，并且连子进程树一起杀（留着孙进程会继续占着文件句柄）。
           run "step-timeout-teeth" node tools/test-step-timeout-teeth.mjs .
+          # 第 28 步盯的是「每一步都要登记牙齿在哪」这道闸**自己**。
+          # 起因是补完第 27 步之后提出的一个问题：
+          #   「将来再加第 28、29 步时，谁来提醒它『你还没配牙齿』？」
+          # 此前 19~27 步每一条牙齿都是**补完一条闸之后自己想起来**才配的 ——
+          # 那是「下次记得」，不算防线。现在 tools/runtests.mjs 里每一步必须
+          # 写明 teeth / guardedBy / why（三选一），漏一个整套拒绝开跑。
+          # 本步验的就是「漏了真的会拒绝开跑」：在沙盒副本上加一步、改坏登记，
+          # 再要求退出码非 0；原样的对照组必须照旧放行。
+          run "step-registry-teeth" node tools/test-step-registry-teeth.mjs .
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
           exit $fails

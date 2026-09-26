@@ -117,7 +117,13 @@ const scenarios = [
     id: 'C3 本地比 CI 多一个白名单外的参数',
     expect: 1,
     expectText: '两边命令不一致',
-    mutate: () => replaceOnce(RT, /\['withTimeout', \['tools\/test-with-timeout\.mjs'\]\]/, "['withTimeout', ['tools/test-with-timeout.mjs', '--verbose']]"),
+    // ⚠️ 别把前面的 `\[` 写进正则：2026-09-26 把全部步骤从
+    //   `STEPS.push(['名', [...]])` 改成 `REG.push('名', [...], { 登记 })`
+    //   之后，带前导 `\[` 的写法就**匹配不到任何东西**了，而 replaceOnce 会因此抛错
+    //   —— 这一步当场变红。改的是「清单长什么样」，但谁在按旧形状匹配它，
+    //   得回头扫一遍（lint-ci-refs.mjs 里的 STEP_RE 是同一批被扫出来的第二处）。
+    //   现在只匹配 `'名', [...]` 这段，两种写法都认。
+    mutate: () => replaceOnce(RT, /'withTimeout',\s*\['tools\/test-with-timeout\.mjs'\]/, "'withTimeout', ['tools/test-with-timeout.mjs', '--verbose']"),
   },
   {
     // 2026-09-25 真踩过：我在 deploy job 的注释里写「为什么这条不写成

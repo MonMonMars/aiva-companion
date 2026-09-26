@@ -98,15 +98,21 @@ if (!fs.existsSync(RUNTESTS)) {
   fail(`找不到 ${RUNTESTS}，无法对照`);
 } else {
   const src = fs.readFileSync(RUNTESTS, 'utf8');
-  // 本地每一项都写成一行：['name', ['arg1', 'arg2']] 或 STEPS.push([...])
-  const STEP_RE = /\['([^']+)',\s*\[([^\]]*)\]\]/g;
+  // 本地每一项写成两种之一：
+  //   旧：STEPS.push(['name', ['arg1', 'arg2']])
+  //   新：REG.push('name', ['arg1', 'arg2'], { ...登记... })
+  // ★ 两种都得认。2026-09-26 把全部步骤改成 REG.push 的登记写法之后，
+  //   这里只认旧写法的话会**一条都扫不到** —— 而「扫到 0 条」在这一步里的表现
+  //   是 B/C 两项整层静默跳过（只剩 A 项在跑），正是第 22 步在盯的那种假绿。
+  //   两个分支都写死在一条正则里，改名 / 换写法时两边一起改。
+  const STEP_RE = /\['([^']+)',\s*\[([^\]]*)\]\]|REG\.push\('([^']+)',\s*\[([^\]]*)\]/g;
   let m;
   while ((m = STEP_RE.exec(src)) !== null) {
-    const toks = m[2]
+    const toks = (m[2] !== undefined ? m[2] : m[4])
       .split(',')
       .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
       .filter(Boolean);
-    localCmds.set(m[1], toks);
+    localCmds.set(m[1] !== undefined ? m[1] : m[3], toks);
   }
   ok(`本地套装有 ${localCmds.size} 步`);
 
