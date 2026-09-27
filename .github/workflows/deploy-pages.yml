@@ -278,6 +278,17 @@ jobs:
           #   ⚠️ 它自带打包（约 4 秒 ×2），产物写进 dist-localcheck-appui-web 自己那份 ——
           #      早先它写的是第 17 步那一份、收工删掉，CI #66/#67 连红三轮就是这个形状。
           run "app-ui-teeth" node tools/test-verify-app-ui-teeth.mjs .
+          # 第 42 步：CI 上真会跑的脚本，不许写死「某台机器的用户主目录」。
+          #   起因就是上面第 40 步那次：`verify-app-ui` 写死了本机的
+          #   C:/Users/Simon Lai/.../chrome.exe，一收进套装，ubuntu runner 上
+          #   就拿一个不存在的文件去 spawn，报错只有 ENOENT，看不出是路径写死了。
+          #   合并成 find-chrome.mjs 只修掉了这一处，这道闸是用来挡下一处的。
+          #   ⚠️ 它今天抓不到东西（0 处违规），所以自带金丝雀自检：
+          #      判据改坏会让它静默全绿，只能靠内置样例把这件事拽出来。
+          run "ci-paths" node tools/lint-ci-paths.mjs .
+          # 第 43 步是第 42 步的牙齿：7 个场景，其中④「扫描器退化」最关键 ——
+          #   没有它，一个永远绿的空壳也能通过其余场景。
+          run "ci-paths-teeth" node tools/test-lint-ci-paths-teeth.mjs .
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
           exit $fails
