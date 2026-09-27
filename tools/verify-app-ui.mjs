@@ -19,6 +19,14 @@
 //       必须读 getComputedStyle —— 实测这样才量得到。
 //
 // 用法：node tools/verify-app-ui.mjs [项目根]
+//
+// ⚠️ 早先这里写着「没登记进套装，要手动跑，因为 CI 上要装浏览器」——
+//    2026-09-27 把那条理由验了一遍，发现它是假的：
+//      「CI 上没浏览器」这条被 smoke-runtime.mjs 推翻了 —— ubuntu runner 自带
+//      Chrome 153（/usr/bin/google-chrome），软渲染也能跑（CI #33/#34/#35 实测）。
+//      真正缺的只是这份脚本自己那份**更短的**候选清单（当时只认本机那个 Windows
+//      路径），同一台机器上 smoke-runtime 认得、它认不得 —— 判据漏了一半。
+//    所以现在它是套装里的第 40 步，浏览器和产物两份判据都改成共用 tools/lib/ 那份。
 
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -27,22 +35,42 @@ import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { needBool, needLabel } from './assert-args.mjs';
+import { findDist, distCandidates } from './lib/find-dist.mjs';
+import { findChrome, chromeCandidates } from './lib/find-chrome.mjs';
+import { rmTreeSyncBounded } from './step-runner.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(process.argv[2] || path.join(__dirname, '..'));
-// 产物目录：默认还是 `dist`，但可以用 UI_DIST 指到别处。
-//   为什么要有这个开关：dist/ 是一个会被反复覆盖的构建产物，拿它做判据时
-//   根本不知道自己验的是哪一版源码 —— 2026-09-27 就在这里栽过一次：
-//   「人格卡 19 张 ≠ 各档位声明之和 36」红了很久，最后发现测的是两天前的旧包
-//   （源码当时已经有 20 个人格）。想分清「产品坏了」和「我验的是旧包」，
-//   就得能指着一份**刚打出来的**包跑，而不是先覆盖掉 dist/。
-const DIST = path.resolve(process.env.UI_DIST || path.join(ROOT, 'dist'));
+// 产物目录：给了 UI_DIST 就用它，没给就去找（`dist-localcheck-web` → `dist`）。
+//   ★ 找的那份判据和第 17 步共用 tools/lib/find-dist.mjs —— 早先这里是自己写的
+//     `UI_DIST || ROOT/dist`，和第 17 步不一致：别人改用 dist-localcheck-* 之后，
+//     这一步会一声不吭地退回去验 dist/ 那份老产物。同一个「两份逻辑飘开」的形状。
+//   ⚠️ 为什么要有 UI_DIST 这个开关：dist/ 会被反复覆盖，拿它做判据时根本不知道
+//     自己验的是哪一版源码 —— 2026-09-27 就在这里栽过一次：
+//     「人格卡 19 张 ≠ 各档位声明之和 36」红了很久，最后发现测的是两天前的旧包
+//     （源码当时已经有 20 个人格）。想分清「产品坏了」和「我验的是旧包」，
+//     就得能指着一份**刚打出来的**包跑。
+const DIST = process.env.UI_DIST
+  ? path.resolve(ROOT, process.env.UI_DIST)
+  : findDist(ROOT);
 
-if (!fs.existsSync(path.join(DIST, 'index.html'))) {
-  console.error(`${DIST}\\index.html 不存在 —— 先打一份 web 包`
-    + '（npx expo export --platform web，或 node tools/verify-bundle.mjs . --keep 再用 UI_DIST 指过来）');
+if (!DIST) {
+  // 找不到就把**试过哪些地方**原样列出来 —— 只说一句「index.html 不存在」的话，
+  // 下一个看到的人得自己猜它找的是哪个目录（真踩过，猜的方向是错的）。
+  const tried = process.env.UI_DIST
+    ? [path.resolve(ROOT, process.env.UI_DIST), ...distCandidates()]
+    : distCandidates();
+  console.error([
+    '找不到可验的产物（这些地方都没有 index.html）：',
+    ...tried.map((d) => `  ${d}`),
+    '',
+    '  先打一份 web 包：npx expo export --platform web',
+    '            或者：node tools/verify-bundle.mjs . --keep',
+    '  打到别处就用 UI_DIST 指过来。',
+  ].join('\n'));
   process.exit(1);
 }
+console.log(`验的是这份产物：${DIST}`);
 
 // 期望值：和 src/theme.js 的 UI token 对齐。改了 theme 这里要跟着改，否则一直红。
 const EXPECT = {
@@ -80,8 +108,17 @@ await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const PORT = server.address().port;
 
 // ---------- Chrome ----------
-const CHROME = process.env.CHROME_PATH
-  || 'C:/Users/Simon Lai/.agent-browser/browsers/chrome-153.0.8010.52/chrome.exe';
+const CHROME = findChrome();
+if (!CHROME) {
+  console.error([
+    '找不到 Chrome。试过：',
+    ...chromeCandidates().map((p) => `  ${p}`),
+    '',
+    '  设置 CHROME_PATH 指向本机 chrome.exe 后再跑。',
+  ].join('\n'));
+  process.exit(1);
+}
+console.log(`用这个浏览器：${CHROME}`);
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'cdp-ui-'));
 const chrome = spawn(CHROME, [
   '--headless=new', '--no-sandbox', '--hide-scrollbars',
@@ -279,6 +316,12 @@ try {
   conn?.close();
   chrome.kill();
   server.close();
-  try { fs.rmSync(profile, { recursive: true, force: true }); } catch { /* 无所谓 */ }
+  // ⚠️ 这里早先写的是 `fs.rmSync(profile, { recursive: true, force: true })`。
+  //    它会**卡住不返回**（这台 Windows 机器上实测 12 轮 1 轮），而且是同步的 ——
+  //    卡住的时候事件循环被堵死，外面 runStep 那个 10 分钟定时器根本不触发，
+  //    于是这一步永远没有结论。现在是第 38 步盯着的一类写法，换成丢给子进程
+  //    带硬上限的那个版本（detail 见 tools/step-runner.mjs）。
+  const rm = rmTreeSyncBounded(profile);
+  if (!rm.gone) console.error(`  ⚠️ 临时 profile 没删掉（${rm.timedOut ? '清理自己挂住了，进程已杀' : '未知原因'}）—— 不挡结论`);
 }
 process.exit(bad === 0 ? 0 : 1);

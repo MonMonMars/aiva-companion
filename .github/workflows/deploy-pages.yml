@@ -261,6 +261,23 @@ jobs:
           #   红该红的、绿该绿的。③「扫描器退化」那条最关键 —— 迁移完之后仓库里
           #   一处违规都不剩，没有内置金丝雀，检查坏了会静默全绿。
           run "rm-sync-teeth" node tools/test-lint-rm-sync-teeth.mjs .
+          # 第 40 步：UI **真的按新设计系统渲染出来了没有**（第 17 步之上那一层）。
+          #   第 17 步只回答「能 boot、能走到 Home、模型挂上了」，回答不了
+          #   「颜色 token 有没有真的生效」「暗底上有没有黑字」—— 这几条对一个
+          #   **看不见画面**的人来说只能靠数字，不能靠嘴说（本机读 PNG 会被拦掉）。
+          #   ⚠️ 「CI 上要装浏览器」这条不登记的理由是过期判断：ubuntu runner 自带
+          #      Chrome 153，smoke-runtime 从 CI #33 起就一直在 CI 上跑得好好的。
+          #      真正卡住它的只是它自己那份只认本机 Windows 路径的清单，已合并共用。
+          run "app-ui" node tools/verify-app-ui.mjs .
+          # 第 41 步是第 40 步的牙齿：把档位头报的数字 +1 → 第 40 步必须红；
+          #   还原 → 必须绿；收工还要 sha256 逐字节一致。
+          #   为什么非要：那条断言红的时候**看不出是产品坏了还是断言坏了** ——
+          #   2026-09-27 报「19 张 ≠ 36」红了很久，最后查下来两处都是断言自己
+          #   的算术错了（底部 CTA 被当成第 19 张卡、顶部那句「18 位全部开放」
+          #   被当成第 5 个档位头），产品一直是 3+10+4+1 = 18 没错。
+          #   ⚠️ 它自带打包（约 4 秒 ×2），产物写进 dist-localcheck-appui-web 自己那份 ——
+          #      早先它写的是第 17 步那一份、收工删掉，CI #66/#67 连红三轮就是这个形状。
+          run "app-ui-teeth" node tools/test-verify-app-ui-teeth.mjs .
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "失败 $fails 项" >> $GITHUB_STEP_SUMMARY
           exit $fails

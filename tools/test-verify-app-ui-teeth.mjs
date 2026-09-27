@@ -1,12 +1,16 @@
 // `tools/verify-app-ui.mjs` 里那条「人格卡 N 张 = 各档位声明之和 M」的牙齿。
 // ---------------------------------------------------------------------------
-// ⚠️ 本脚本**没有登记进 runtests.mjs 的套装**，需要手动跑：
-//      node tools/test-verify-app-ui-teeth.mjs
-//   原因是它需要三样套装里刻意没有的东西：本机 Chrome、打一份 web 包（约 4 秒）、
-//   以及**临时改一次 src 再还原**（有 sha256 收工核验）。放进 CI 会让每次都要
-//   装浏览器并多花半分钟，性价比不划算；但留着它，是因为那条断言一旦被改坏，
-//   没有任何常驻的东西会提醒 —— 这仓库里「静默全绿」的事故已经出现过四次。
+// ⚠️ 2026-09-27 更新：它**已经登记进套装**（第 41 步，盯第 40 步 `verify-app-ui`）。
+//   原先「不登记」的那三条理由逐条复核过，只有一条勉强站得住：
+//     ①「需要本机 Chrome」—— 不成立。ubuntu runner 自带 Chrome 153，
+//        smoke-runtime.mjs 从 CI #33 起就一直在 CI 上跑。真正缺的只是
+//        verify-app-ui.mjs 自己那份**只认本机路径**的清单（已合并进 find-chrome）。
+//     ②「临时改一次 src 再还原」—— 本来就不是障碍：第 21 步 lipsync-teeth、
+//        第 29 步 assertion-teeth 都临时改真源文件，外面都带着 sha256 收工核验。
+//     ③「要打一份 web 包」—— 这条是真的（约 4 秒）。代价就只是这 4 秒，
+//        前提是**打到自己那份独立目录**里（详见下面 OUT 处的注释）。
 //
+// ---------------------------------------------------------------------------
 // 为什么这条断言本身值得配牙齿：它红的时候**看不出是产品坏了还是断言坏了**。
 //   2026-09-27 实测：它报「19 张 ≠ 36」红了很久，查下来两处都是**断言自己的
 //   算术错了**（见 verify-app-ui.mjs 里 PROBE 的注释）：
@@ -36,7 +40,17 @@ import { needBool, needLabel } from './assert-args.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(process.argv[2] || path.join(HERE, '..'));
 const SRC = path.join(ROOT, 'src/screens/PersonaSelect.js');
-const DIST = 'dist-localcheck-web';
+// ★★ 产物必须打进**自己那份**目录，收工也只删自己那份。
+//    早先这里是 `DIST = 'dist-localcheck-web'` —— 和第 17 步（smoke-runtime）
+//    用的是同一个目录，而 finally 里那句 `rmTreeBounded(...)` 会把它删掉。
+//    登记前无所谓（它是手动跑的）；登记之后这个副作用就落进 CI 了，而且形状
+//    和上一次事故**一模一样**：CI #66/#67 连红三轮，就是因为 assertion-teeth
+//    那条 bundle 变异用例打包失败，把 dist-localcheck-web 删掉又建不回来，
+//    紧跟其后的步骤找不到产物。dist-* 是 gitignore 的，`git status` 一句都不会说。
+//    现在第 34 步有专门一条判据盯着「跑完产物目录还在」—— 它会当场变红。
+//    ⚠️ 前缀仍以 dist-localcheck 开头，好让 runtests 收工那遍清理顺手扫到残留。
+const OUT_PREFIX = 'dist-localcheck-appui';
+const DIST = `${OUT_PREFIX}-web`;
 
 let bad = 0;
 const check = (cond, msg) => {
@@ -52,7 +66,10 @@ const FROM = 'meta={`${g.list.length} 位`}';
 const TO = 'meta={`${g.list.length + 1} 位`}';
 
 async function build() {
-  const r = await runStep(['tools/verify-bundle.mjs', '.', '--platform', 'web', '--keep'], { cwd: ROOT, timeoutMs: 180000 });
+  // `--out` 是 2026-09-27 专门为这种场合加的开关（起因见 CI #66/#67）：
+  //    verify-bundle 打包前会先删掉自己的输出目录，而这里要的是
+  //    「自己单独一份，别碰第 17 步那 一份」。
+  const r = await runStep(['tools/verify-bundle.mjs', '.', '--platform', 'web', '--keep', '--out', OUT_PREFIX], { cwd: ROOT, timeoutMs: 180000 });
   if (r.status !== 0) throw new Error('打包失败 —— 后面的判断都没意义了');
 }
 async function runUi(port) {

@@ -26,6 +26,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { findDist, distCandidates } from './lib/find-dist.mjs';
+import { findChrome } from './lib/find-chrome.mjs';
 
 const ROOT = path.resolve(process.argv[2] || '.');
 const argv = process.argv.slice(3);
@@ -56,12 +57,11 @@ if (!DIST && !liveUrl) {
   process.exit(1);
 }
 
-const CHROME = [
-  process.env.CHROME_PATH,
-  'C:/Users/Simon Lai/.agent-browser/browsers/chrome-153.0.8010.52/chrome.exe',
-  '/usr/bin/google-chrome',
-  '/usr/bin/chromium',
-].filter(Boolean).find((p) => fs.existsSync(p));
+// ★ 这份候选清单搬到了 tools/lib/find-chrome.mjs，和 tools/verify-app-ui.mjs 共用。
+//   理由见那个文件的顶部：早先这里认四选一、verify-app-ui 只认前两条 ——
+//   没登记时看不出来（CI 上没人跑它），一登记就变成「同一台机器上这一步绿、
+//   那一步因为找不到浏览器而红」。别在这里再写第二份。
+const CHROME = findChrome();
 
 if (!CHROME) {
   console.log('✗ 找不到 Chrome。设置 CHROME_PATH 指向本机 chrome.exe 后再跑。');

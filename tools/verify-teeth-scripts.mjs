@@ -101,15 +101,19 @@ function teethScripts(rows) {
   return [...set.entries()].map(([script, why]) => ({ script, why }));
 }
 
-// 文件名像牙齿脚本、却没登记进套装的 —— 它不会被任何人跑，等于没有。
-// 已知的例外要**点名**写在这里（写在下面就每跑必打印，跑不掉）：
-//   改了名 / 删了文件，这条会立刻红（下面会反过来查「名单里的文件还在不在」）。
-const KNOWN_UNREGISTERED = [
-  {
-    file: 'tools/test-verify-app-ui-teeth.mjs',
-    why: '它要本机 Chrome + 重新打一次包 + 临时改一次 src；没登记是**有意**的，等定夺后才进 CI',
-  },
-];
+// ⚠️ 2026-09-27：**「未登记例外名单」整块删掉了**。原先这里点名豁免着
+//    `tools/test-verify-app-ui-teeth.mjs`（理由：「要本机 Chrome，没登记是有意的」）。
+//    那条理由这一轮被验掉了一半 —— Chrome 在 CI 上是有的（smoke-runtime 早就在
+//    CI #33 起跑得好好的），于是它被收进套装当第 41 步。
+//    留一条**已经登记了**的文件在这份豁免名单上的后果是：**没有任何东西会响** ——
+//    原来那条判据只查「文件还在不在」，登记不登记它不管；而判据⑥ 会因为它被名单
+//    豁免而不去管它。名单就这样烂在文件里，没人会发现。
+//
+//    更干净的做法是把这个口子整块删掉：既然它已经登记，`tools/` 下也再没有别的
+//    未登记牙齿脚本，下面判据⑦（文件名像牙齿却没登记 → 红）就完整覆盖了这件事，
+//    而且**没有逃生通道** —— 这正是第 36 步那次学到的：开了豁免的口子，
+//    真违规也能挂个注释混过去。什么时候 tools/ 里再出现一个确实不该登记的牙齿
+//    脚本，到时候只能指着它给出理由，而不是现在先留个空口子等着。
 
 function gitStatus(root) {
   const r = spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' });
@@ -163,25 +167,16 @@ const teeth = teethScripts(rows);
 
 check(teeth.length > 0, `从登记表问到了 ${teeth.length} 个牙齿脚本（一条都没有就是解析失败，按失败算）`);
 
-for (const k of KNOWN_UNREGISTERED) {
-  check(
-    fs.existsSync(path.join(ROOT, k.file)),
-    `未登记例外「${k.file}」还在原位（不在了说明这条例外已经过期，删掉它）`
-  );
-}
-if (KNOWN_UNREGISTERED.length) {
-  console.log(`  ⚠️ ${KNOWN_UNREGISTERED.length} 个牙齿脚本**故意**没登记（不会被任何人跑）：`);
-  for (const k of KNOWN_UNREGISTERED) console.log(`      ${k.file} —— ${k.why}`);
-}
-
-const known = new Set(KNOWN_UNREGISTERED.map((k) => k.file));
+// 文件名像牙齿脚本、却没登记进套装的 —— 它不会被任何人跑，等于没有。
+//   ⚠️ 2026-09-27 起**没有豁免名单**：原先放过 test-verify-app-ui-teeth.mjs 的那个口子
+//     连同它一起删掉了，理由见上面那段注释 —— 现在 tools/ 下再冒出任何一个未登记的
+//     牙齿脚本，这里都会红，没有逃生通道。
 const onDisk = fs
   .readdirSync(path.join(ROOT, 'tools'))
   .filter((f) => /^test-.*teeth.*\.mjs$/.test(f))
   .map((f) => `tools/${f}`);
 for (const f of onDisk) {
   if (teeth.some((t) => t.script === f)) continue;
-  if (known.has(f)) continue;
   check(false, `tools/ 下有牙齿脚本「${f}」没登记进套装 —— 它不会被任何人跑，等于没有`);
 }
 
