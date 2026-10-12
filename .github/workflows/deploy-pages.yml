@@ -111,6 +111,7 @@ jobs:
           run "nativeSpeech" node tools/nativeSpeech.test.mjs
           run "espeak" node tools/espeak.test.mjs
           run "tts" node tools/tts.test.mjs
+          run "grok-voice" node tools/grok-voice.test.mjs
           run "songs" node tools/songs.test.mjs
           run "pipeline" node tools/pipeline.test.mjs
           run "rig-semantics" node --import ./tools/src-resolve.mjs tools/test-rig-semantics.mjs
