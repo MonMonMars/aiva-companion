@@ -13,6 +13,84 @@ import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 
+const XAI_CLIENT_SECRETS_URL = 'https://api.x.ai/v1/realtime/client_secrets';
+const GROK_VOICE_MODEL = 'grok-voice-latest';
+const GROK_REALTIME_WS_URL = `wss://api.x.ai/v1/realtime?model=${GROK_VOICE_MODEL}`;
+const EPHEMERAL_TOKEN_TTL_SECONDS = 300;
+
+/** Mint ephemeral xAI token — API key stays on server. */
+async function mintGrokVoiceSession() {
+  const apiKey = (process.env.XAI_API_KEY || '').trim();
+  if (!apiKey) {
+    return {
+      status: 503,
+      body: {
+        error: 'voice_unconfigured',
+        message:
+          'Grok voice is unavailable. Set XAI_API_KEY in the server environment (never in the static web bundle).',
+      },
+    };
+  }
+
+  let upstream;
+  try {
+    upstream = await fetch(XAI_CLIENT_SECRETS_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ expires_after: { seconds: EPHEMERAL_TOKEN_TTL_SECONDS } }),
+    });
+  } catch {
+    return {
+      status: 502,
+      body: { error: 'voice_upstream_unreachable', message: 'Could not reach xAI.' },
+    };
+  }
+
+  if (!upstream.ok) {
+    const detail = (await upstream.text().catch(() => '')).slice(0, 500);
+    return {
+      status: 502,
+      body: {
+        error: 'voice_token_failed',
+        message: 'xAI could not issue an ephemeral voice token.',
+        status: upstream.status,
+        detail,
+      },
+    };
+  }
+
+  let raw;
+  try {
+    raw = await upstream.json();
+  } catch {
+    return {
+      status: 502,
+      body: { error: 'voice_token_invalid', message: 'Invalid xAI token response.' },
+    };
+  }
+
+  const token = raw?.value?.trim();
+  if (!token) {
+    return {
+      status: 502,
+      body: { error: 'voice_token_invalid', message: 'xAI client_secrets response missing token value.' },
+    };
+  }
+
+  return {
+    status: 200,
+    body: {
+      token,
+      expiresAt: raw.expires_at,
+      model: GROK_VOICE_MODEL,
+      wsUrl: GROK_REALTIME_WS_URL,
+    },
+  };
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // 部署沙箱会注入 PORT，本地跑用 argv
@@ -70,10 +148,22 @@ function pick(file, accept) {
 }
 
 http
-  .createServer((req, res) => {
+  .createServer(async (req, res) => {
+    const pathname = (req.url || '/').split('?')[0];
+
+    if (pathname === '/api/voice/session' && req.method === 'POST') {
+      const out = await mintGrokVoiceSession();
+      const json = JSON.stringify(out.body);
+      res.writeHead(out.status, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+      });
+      return res.end(json);
+    }
+
     let rel;
     try {
-      rel = decodeURIComponent((req.url || '/').split('?')[0]);
+      rel = decodeURIComponent(pathname);
     } catch {
       res.writeHead(400);
       return res.end('bad url');

@@ -96,6 +96,9 @@ const DEFAULT_STATE = {
       tavilyKey: '',
       braveKey: '',
       serperKey: '',
+      // Grok realtime voice (web): ephemeral token from server proxy — never paste XAI_API_KEY here
+      grokSessionUrl: '',   // empty = POST /api/voice/session on same origin (dist/server.js)
+      grokVoiceId: '',      // empty = eve
     },
   },
 };

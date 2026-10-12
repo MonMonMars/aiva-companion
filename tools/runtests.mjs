@@ -79,6 +79,9 @@ REG.push('espeak', ['tools/espeak.test.mjs'], {
 REG.push('tts', ['tools/tts.test.mjs'], {
   guardedBy: ['assertion-teeth'],
 });
+REG.push('grok-voice', ['tools/grok-voice.test.mjs'], {
+  guardedBy: ['assertion-teeth'],
+});
 REG.push('songs', ['tools/songs.test.mjs'], {
   guardedBy: ['assertion-teeth'],
 });

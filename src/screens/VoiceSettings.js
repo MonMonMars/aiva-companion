@@ -299,6 +299,33 @@ export default function VoiceSettings({ personaId, onBack }) {
         这些 Key 只存在你手机里，不会上传。当前角色：{personaCfg.label}
       </Text>
 
+      {/* ---------------- Grok 实时通话（Web） ---------------- */}
+      <GlassCard style={st.card}>
+        <Text style={st.cardTitle}>📞 Grok 实时通话（Web）</Text>
+        <Text style={st.note}>
+          主界面 📞 按钮走 xAI Speech-to-Speech（server VAD）。{'\n'}
+          API Key 只能放在服务端环境变量 XAI_API_KEY —— 不要填进下面任何输入框。{'\n'}
+          GitHub Pages 纯静态站没有后端；本地请 export XAI_API_KEY 后 node dist/server.js。{'\n'}
+          若自建代理，把完整 POST 地址填在「Session 代理 URL」。
+        </Text>
+        <Row label="Session 代理 URL" note="留空 = 同源的 /api/voice/session（dist/server.js 提供）">
+          <Field
+            value={v.grokSessionUrl}
+            onChange={(t) => setV({ grokSessionUrl: t.trim() })}
+            placeholder="https://你的域名/api/voice/session"
+            mono
+          />
+        </Row>
+        <Row label="Grok 音色 ID" note="留空 = eve。官方列表见 xAI Voice 文档。">
+          <Field
+            value={v.grokVoiceId}
+            onChange={(t) => setV({ grokVoiceId: t.trim() })}
+            placeholder="eve"
+            mono
+          />
+        </Row>
+      </GlassCard>
+
       {/* ---------------- 语言 ---------------- */}
       <GlassCard style={st.card}>
         <Text style={st.cardTitle}>🗣 说什么语言</Text>

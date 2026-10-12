@@ -33,6 +33,9 @@ import { markInteractive } from '../lib/preload';
 import { chatWithTools } from '../chatEngine';
 import { stripEmotionTags } from '../voice/tts';
 import { scheduleReminder } from '../services/reminders';
+import GrokVoiceCall from '../components/GrokVoiceCall';
+import { DEFAULT_GROK_SESSION_PATH } from '../voice/grok/constants';
+import { buildSystemPrompt } from '../llm';
 
 const TAP_MOVE = 10;      // px，单指最多划这么多才算「点」(tap)，超过就当「划」(scroll/转视角)
 
@@ -71,6 +74,8 @@ export default function Home({ personaId, onChat, onMenu, onSwitch, comeback, av
   const [bubble, setBubble] = useState('');
   const [glFailed, setGlFailed] = useState(false);
   const [floaters, setFloaters] = useState([]); // "+5 亲密" 飘字
+  const [grokCallOpen, setGrokCallOpen] = useState(false);
+  const [grokSpeaking, setGrokSpeaking] = useState(false);
 
   const voice = useVoice({
     personaId,
@@ -158,11 +163,20 @@ export default function Home({ personaId, onChat, onMenu, onSwitch, comeback, av
   // 说话时做伸懒腰那种动作非常出戏）。
   useEffect(() => {
     if (!modelReadyRef.current) return;
+    const classicBusy = voice.state === 'thinking' || voice.state === 'recording';
     avatarRef.current?.setPoseState?.(
-      voice.state === 'speaking' ? 'speak'
-        : (voice.state === 'thinking' || voice.state === 'recording') ? 'think' : 'idle'
+      voice.state === 'speaking' || grokSpeaking ? 'speak'
+        : classicBusy ? 'think' : 'idle'
     );
-  }, [voice.state]);
+  }, [voice.state, grokSpeaking]);
+
+  useEffect(() => {
+    if (grokSpeaking) {
+      avatarRef.current?.speak?.('…', { emotion: 'gentle', speed: 1 });
+    } else if (grokCallOpen) {
+      avatarRef.current?.stopSpeaking?.();
+    }
+  }, [grokSpeaking, grokCallOpen]);
 
   const pushFloater = (text, color) => {
     const id = Date.now() + Math.random();
@@ -409,6 +423,24 @@ export default function Home({ personaId, onChat, onMenu, onSwitch, comeback, av
   // 只在 idle 分支不会被求值才一直没炸，一旦开口就会 ReferenceError）
   const spoken = voice.state === 'idle' ? bubble : (voice.subtitle || bubble);
 
+  const spokenLang = snap.config?.spokenLang || 'zh-HK';
+  const grokSessionUrl = (snap.config?.voice?.grokSessionUrl || '').trim() || DEFAULT_GROK_SESSION_PATH;
+  const grokSessionContext = useMemo(() => ({
+    personaName: persona.name,
+    systemInstructions: buildSystemPrompt(personaId, snap),
+    lang: spokenLang === 'auto' ? 'zh-HK' : spokenLang,
+    kidMode: !!snap.config?.kidMode,
+    voiceId: snap.config?.voice?.grokVoiceId || '',
+  }), [persona.name, personaId, snap, spokenLang, snap.config?.kidMode, snap.config?.voice?.grokVoiceId]);
+
+  const onGrokTranscript = (text, role) => {
+    const t = String(text || '').trim();
+    if (!t) return;
+    S.appendMessage(personaId, { role, content: t, ts: Date.now() });
+    if (role === 'assistant') setBubble(t);
+    S.rewardChat();
+  };
+
   // 输入条上方只留最近几轮对话，越往上越淡，顶部自然消失。
   // 两个约束：总行数压在 4 行内（不然 3D 舞台被挤没），
   // 且最新那句如果正被下面的气泡念着就跳过 —— 否则同一句话上下重复一遍。
@@ -559,6 +591,16 @@ export default function Home({ personaId, onChat, onMenu, onSwitch, comeback, av
           />
         </View>
 
+        {Platform.OS === 'web' && (
+          <Pressable
+            style={[styles.dockBtn, grokCallOpen && styles.dockBtnOn]}
+            onPress={() => setGrokCallOpen(true)}
+            accessibilityLabel="Grok 实时通话"
+          >
+            <Text style={styles.dockIcon}>📞</Text>
+          </Pressable>
+        )}
+
         <Pressable
           style={[styles.dockBtn, voice.state !== 'idle' && styles.dockBtnOn]}
           onPress={voice.toggle}
@@ -580,6 +622,21 @@ export default function Home({ personaId, onChat, onMenu, onSwitch, comeback, av
             : <Text style={styles.sendIcon}>➤</Text>}
         </Pressable>
       </View>
+
+      {Platform.OS === 'web' && (
+        <GrokVoiceCall
+          visible={grokCallOpen}
+          onClose={() => {
+            setGrokCallOpen(false);
+            setGrokSpeaking(false);
+          }}
+          personaName={persona.name}
+          sessionUrl={grokSessionUrl}
+          sessionContext={grokSessionContext}
+          onSpeakingChange={setGrokSpeaking}
+          onTranscript={onGrokTranscript}
+        />
+      )}
 
     </View>
   );

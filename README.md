@@ -137,6 +137,24 @@ ChatGPT 式的交互已经打通：
 
 可用的情绪标记：`[laughs] [giggles] [sighs] [excited] [comfort] [gentle] [sad] [shy] [whispers] [surprised] [curious] [serious] [sing] [teach] [proud] [sleepy]`
 
+### 2.6.1 Grok 实时通话（Web · xAI Realtime）
+
+主界面底部 **📞** 走 xAI Speech-to-Speech（`wss://api.x.ai/v1/realtime?model=grok-voice-latest`），server VAD 自动轮替，粤语优先（STT `language_hint: yue`；若 TTS 只有 zh，发音可能偏普通话）。
+
+**安全：** 永远不要把 `XAI_API_KEY` 写进前端或 GitHub Pages 静态包。浏览器只拿服务端签发的**短期 ephemeral token**（`POST /api/voice/session` → xAI `client_secrets`）。
+
+**本地试通话：**
+
+```bash
+npm run export:web
+node tools/fixhtml.mjs && node tools/buildadmin.mjs   # 与 CI 一致，复制 dist/server.js
+export XAI_API_KEY="xai-…"                            # 仅在本机 shell / 托管环境
+node dist/server.js 8123 dist
+# 浏览器打开 http://127.0.0.1:8123/ → 主界面 📞 → 开始通话
+```
+
+**GitHub Pages 演示站**（https://monmonmars.github.io/aiva-companion/）仍是纯静态：原有 🎙️ 推按说话（Edge / 浏览器 TTS）照常可用；📞 需要你在别处托管带 `XAI_API_KEY` 的 `dist/server.js`（或自建等价代理），并在「说话 · 联网」里填 **Session 代理 URL**。
+
 ### 2.7 儿童模式（AD）
 
 打开设置里的**儿童模式**后会启用一套独立的提示词：
@@ -584,7 +602,7 @@ llm-companion/
 
 ```bash
 npm run lint          # 导入完整性 + 样式引用 + 对外请求是否走 netFetch
-npm test              # 43 步全套（含 npm run lint 那三条 + 最后一次真打包 + 十八组牙齿测试）
+npm test              # 44 步全套（含 npm run lint 那三条 + 最后一次真打包 + 十八组牙齿测试）
 npm run test:fast     # 同上但跳过打包，省几十秒；别把它变成常态
 npm run export:web    # 打个 web 包到 dist/，用来在浏览器里看效果
 npm run verify:bundle   # 单独跑打包验证（web + ios，产物不落盘）
@@ -1250,7 +1268,7 @@ totalFails」是靠单独加的混合名单场景（`noa` + `nosuchhero`）才�
 ```
 $ node tools/runtests.mjs --check-registry
 
-【登记核对】共 43 步：25 步有常驻牙齿，18 步只靠理由
+【登记核对】共 44 步：26 步有常驻牙齿，18 步只靠理由
   ⚠️ 其中 18 步自认「未验证」（只是我的判断，没有证据）：lint-ci-refs-teeth / smoke-runtime-teeth / …（18 个全是牙齿脚本自己）
   ✓ 登记齐全 —— 开跑
 ```
@@ -1443,7 +1461,7 @@ $ node tools/runtests.mjs --check-registry
 `verify-bundle` 收尾的 `fs.rmSync(dist-localcheck-web)` 在这台机器上**挂住不返回**，
 对照组跑到 180 秒硬上限被杀。打包其实 3.1 秒就成功了，卡的是清理。
 
-**欠账单上「非牙齿步骤」已清零**：43 步里 25 步有常驻牙齿，剩下 18 步
+**欠账单上「非牙齿步骤」已清零**：44 步里 26 步有常驻牙齿，剩下 18 步
 **全部是牙齿脚本自己**（牙齿的牙齿到此为止）。
 
 > 上面那句「`fs.rmSync` 在这台机器上挂住不返回」当时只是**被观察到**，
@@ -1971,6 +1989,12 @@ Windows Chrome 路径是「候选清单」的合法写法。所以「新写个 l
 它唯一能证明自己还活着的方式就是内置金丝雀。少了这条，一个「永远绿」的
 空壳也能通过其余全部场景 —— 而且不会有任何其它检查发现。
 
+### 第 44 步：`grok-voice` —— xAI Realtime 会话载荷与 PCM 助手
+
+`tools/grok-voice.test.mjs` 覆盖 `src/voice/grok/` 里不依赖 React Native 的部分：
+`session.update` 是否带 `server_vad`、粤语 STT `language_hint: yue`、PCM 往返、
+ephemeral token 子协议前缀。Guarded by `assertion-teeth`（跟 `tts` 同一档）。
+
 ---
 
 ## 七、几个已经做进去的取舍
@@ -2063,7 +2087,7 @@ node tools/verify-live.mjs
 
 | job | 干什么 | 失败后果 |
 |---|---|---|
-| `test` | 与 build **并行**跑全套测试（43 步） | **不挡发布**，只把这个 job 标红 |
+| `test` | 与 build **并行**跑全套测试（44 步） | **不挡发布**，只把这个 job 标红 |
 | `build` | 打包，并把这一版主 bundle 的名字（内容哈希）作为 job 输出交给 deploy | 不发布 |
 | `deploy` | ① 发布后跑 `verify-live.mjs`（最多重试 12 次 × 45 秒）② 线上冒烟：`smoke-runtime.mjs --url <网址>` 真 boot 一遍 | ① 报「线上可能还是旧包」，要人工看一眼 ② 网址起不来 → 整个 job 标红 |
 
